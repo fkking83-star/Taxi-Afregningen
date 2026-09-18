@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="da">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Min afregning</title>
+<style>
+  :root{--ink:#14181F;--bg:#F4F5F7;--card:#fff;--amber:#F5B301;--green:#1E7F53;
+    --green-bg:#E4F3EA;--red:#C4342F;--muted:#5B6270;--line:#E6E8EC;}
+  *{box-sizing:border-box}
+  body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;
+    background:var(--bg);color:var(--ink);line-height:1.5}
+  header{background:var(--ink);color:#fff;padding:18px 20px;border-bottom:4px solid var(--amber)}
+  header .firm{font-size:13px;letter-spacing:.05em;color:#A7ADBA;text-transform:uppercase;margin:0}
+  header h1{margin:2px 0 0;font-size:22px}
+  main{max-width:560px;margin:0 auto;padding:20px}
+  .field{margin-bottom:16px}
+  label{display:block;font-size:13px;color:var(--muted);margin-bottom:4px;font-weight:600}
+  select{width:100%;font-size:17px;padding:12px;border-radius:12px;border:1px solid var(--line);background:#fff}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:20px;margin-bottom:16px}
+  .meta{font-size:13px;color:var(--muted);margin:0 0 8px}
+  .line{display:flex;justify-content:space-between;padding:9px 0;border-bottom:1px solid #F0F1F4;font-size:16px}
+  .line:last-child{border-bottom:none}
+  .val{font-weight:600;font-variant-numeric:tabular-nums}
+  .sub .lbl{color:var(--muted);padding-left:14px;font-size:15px}.sub .val{font-weight:500;color:var(--muted)}
+  .model .val{font-weight:500;font-size:14px;color:var(--muted);text-align:right;max-width:60%}
+  .payout{background:var(--green-bg);margin:12px -20px -20px;padding:16px 20px;border-radius:0 0 16px 16px;
+    display:flex;justify-content:space-between;align-items:center}
+  .payout .lbl{font-weight:700;color:var(--green)}
+  .payout .val{font-weight:800;font-size:22px;color:var(--green)}
+  table{width:100%;border-collapse:collapse;font-size:14px}
+  th{text-align:left;color:var(--muted);font-weight:600;padding:6px 8px;border-bottom:2px solid var(--line)}
+  td{padding:8px;border-bottom:1px solid #F0F1F4;font-variant-numeric:tabular-nums}
+  .nrow{display:flex;align-items:center;padding:9px 0;border-bottom:1px solid #F0F1F4;font-size:16px}
+  .nrow .num{width:24px;color:var(--muted);font-size:13px;flex:none}
+  .nrow .nlbl{flex:1}
+  .nrow .nval{font-weight:600;font-variant-numeric:tabular-nums;text-align:right;white-space:nowrap}
+  .nrow.sub .nlbl{color:var(--muted);font-size:14px;padding-left:6px}
+  .nrow.sub .nval{font-weight:500;color:var(--muted)}
+  .empty{color:var(--muted);text-align:center;padding:24px}
+  .confirm{background:#fff;border:1px solid var(--line);border-radius:16px;padding:16px;text-align:center;font-size:15px;color:var(--muted)}
+</style>
+</head>
+<body>
+<header>
+  <p class="firm" id="firm">Taxi & Flex 22 ApS</p>
+  <h1 id="hdr">Min afregning</h1>
+</header>
+<main>
+  <div class="field">
+    <label>Regnskabsmåned (28.–27.)</label>
+    <select id="month"></select>
+  </div>
+
+  <div class="card" id="card">
+    <p class="meta" id="meta"></p>
+    <div id="body"><div class="empty">Henter…</div></div>
+  </div>
+
+  <div class="card">
+    <b>Dine ture i perioden</b>
+    <div id="ture" style="margin-top:10px"><div class="empty">—</div></div>
+  </div>
+
+  <div class="confirm">
+    Stemmer tallene? Skriv <b>OK</b> til din vognmand — eller sig til hvis noget ser forkert ud.
+  </div>
+  <p style="text-align:center;font-size:11px;color:#B7BCC6;margin:10px 0 0">kvittering v2026-09-11</p>
+</main>
+
+<script>
+/* ===== OPSÆTNING (samme projekt-url + anon-nøgle som dashboardet) ===== */
+const SUPABASE_URL = "https://vehgabygvxnkrqsoazfs.supabase.co";
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZlaGdhYnlndnhua3Jxc29hemZzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODc5MzkzNjcsImV4cCI6MjEwMzUxNTM2N30.bJUEk5lH97cpoydPNsxSCx5niu96Wi022_ls1nmeFyw";   // anon public
+const FIRM = "Taxi & Flex 22 ApS";
+/* ====================================================================== */
+
+const $ = id => document.getElementById(id);
+const token = new URLSearchParams(location.search).get("k") || "";
+const kr = n => (n===null||n===undefined||n==="") ? "–"
+  : Number(n).toLocaleString("da-DK",{minimumFractionDigits:2,maximumFractionDigits:2});
+
+async function rpc(fn, args){
+  const r = await fetch(`${SUPABASE_URL}/rest/v1/rpc/${fn}`, {
+    method:"POST",
+    headers:{ apikey:SUPABASE_ANON_KEY, Authorization:`Bearer ${SUPABASE_ANON_KEY}`,
+              "Content-Type":"application/json" },
+    body: JSON.stringify(args)
+  });
+  if(!r.ok) throw new Error("HTTP "+r.status);
+  return r.json();
+}
+const line=(l,v)=>`<div class="line"><span class="lbl">${l}</span><span class="val">${v}</span></div>`;
+const sub =(l,v)=>`<div class="line sub"><span class="lbl">${l}</span><span class="val">${v}</span></div>`;
+function money(v){ return (v===null||v===undefined||v==="") ? "–" : kr(v)+" kr."; }
+function nrow(nr,label,value,vstyle){
+  return `<div class="nrow"><span class="num">${nr}.</span><span class="nlbl">${label}</span><span class="nval" style="${vstyle||''}">${value}</span></div>`;
+}
+function subrow(label,value){
+  return `<div class="nrow sub"><span class="num"></span><span class="nlbl">${label}</span><span class="nval">${value}</span></div>`;
+}
+function buildLon(row, mine){
+  if(!row) return `<div class="empty">Ingen ture i denne periode.</div>`;
+  const dcol = Number(row.afregn_difference||0)!==0 ? "color:#C4342F;font-weight:700" : "";
+  let h="";
+  h+=nrow(1,"Antal ture", row.antal_ture);
+  h+=nrow(2,"Indkørt i alt", money(row.indkort_i_alt));
+  if(row.overfort_i_alt!=null) h+=nrow(3,"Overført i alt", money(row.overfort_i_alt));
+  if(row.afregn_difference!=null) h+=nrow(4,"Difference", money(row.afregn_difference), dcol);
+  h+=nrow(5,"Kontant i alt", money(row.kontant_i_alt));
+  h+=nrow(6,"Bro / Færge", money(row.bro_faerge_i_alt));
+  h+=nrow(7,"Model", row.model||"");
+  h+=nrow(8,"Bruttoandel", money(row.andel_brutto));
+  if(row.andel_op_til_graensen!=null) h+=subrow("Andel op til grænsen", money(row.andel_op_til_graensen));
+  if(row.andel_over_graensen!=null)   h+=subrow("Andel over grænsen", money(row.andel_over_graensen));
+  if(row.heraf_chauffor_halvdel!=null)h+=subrow(mine?"Heraf dig (halvdel)":"Heraf chauffør (halvdel)", money(row.heraf_chauffor_halvdel));
+  if(row.heraf_kone_halvdel!=null)    h+=subrow("Heraf kone (halvdel)", money(row.heraf_kone_halvdel));
+  if(row.kontant_pr_person!=null)     h+=subrow("Kontant pr. person (halvdel)", money(row.kontant_pr_person));
+  h+=`<div class="payout"><span class="lbl">TIL UDBETALING</span><span class="val">${money(row.til_udbetaling)}</span></div>`;
+  return h;
+}
+
+const diff=(l,v)=>{const n=Number(v||0);const c=n!==0?"color:#C4342F;font-weight:700":"";return `<div class="line"><span class="lbl">${l}</span><span class="val" style="${c}">${kr(v)}</span></div>`;};
+
+let rows=[];
+function renderMonth(m){
+  const row = rows.find(r=>r.regnskabsmaaned===m);
+  $("firm").textContent = FIRM;
+  if(!row){ $("body").innerHTML=`<div class="empty">Ingen ture i denne periode.</div>`; $("ture").innerHTML=""; return; }
+  $("hdr").textContent = "Afregning – " + row.chauffor;
+  $("meta").textContent = "Periode "+m+" · opgjort "+new Date().toLocaleDateString("da-DK");
+  $("body").innerHTML = buildLon(row, true);
+  loadTure(m);
+}
+async function loadTure(m){
+  try{
+    const t = await rpc("hent_ture", {p_token:token, p_maaned:m});
+    if(!t.length){ $("ture").innerHTML=`<div class="empty">Ingen ture.</div>`; return; }
+    const rows = t.map(r=>{
+      const ind = Number(r.indkort||0), ovf = Number(r.overfort||0), kon = Number(r.kontant||0);
+      const d = ind - ovf;
+      const dStyle = d !== 0 ? ' style="color:#C4342F;font-weight:700"' : '';
+      const kStyle = kon > 0 ? ' style="color:#1E7F53;font-weight:700"' : '';
+      return `<tr>
+        <td>${r.dato||""}</td>
+        <td>${r.slutrapport_nr||""}</td>
+        <td style="text-align:right">${kr(ind)}</td>
+        <td style="text-align:right">${kr(ovf)}</td>
+        <td style="text-align:right"${dStyle}>${kr(d)}</td>
+        <td style="text-align:right"${kStyle}>${kr(kon)}</td>
+        <td>${(r.vagt_start||"")}–${(r.vagt_slut||"")}</td>
+      </tr>`;
+    }).join("");
+    $("ture").innerHTML = `<div style="overflow-x:auto"><table>
+      <tr><th>Dato</th><th>Slutrap.</th>
+        <th style="text-align:right">Indkørt</th>
+        <th style="text-align:right">Overført</th>
+        <th style="text-align:right">Diff</th>
+        <th style="text-align:right">Kontant</th>
+        <th>Vagt</th></tr>${rows}</table></div>
+      <p style="font-size:12px;color:var(--muted);margin:8px 0 0">Diff = Indkørt − Overført. Rød = afvigelse. Grøn = kontant modtaget.</p>`;
+  }catch(e){ $("ture").innerHTML=`<div class="empty">–</div>`; }
+}
+
+(async function init(){
+  if(!token){ $("body").innerHTML=`<div class="empty">Ugyldigt link. Bed din vognmand om et nyt.</div>`; return; }
+  if(!SUPABASE_ANON_KEY){ $("body").innerHTML=`<div class="empty">Siden er ikke sat op endnu.</div>`; return; }
+  try{
+    rows = await rpc("hent_kvittering", {p_token:token});
+    const months=[...new Set(rows.map(r=>r.regnskabsmaaned))].sort().reverse();
+    if(!months.length){ $("body").innerHTML=`<div class="empty">Ingen afregning fundet endnu.</div>`; return; }
+    $("month").innerHTML = months.map(m=>`<option>${m}</option>`).join("");
+    $("month").addEventListener("change", ()=>renderMonth($("month").value));
+    renderMonth(months[0]);
+  }catch(e){
+    $("body").innerHTML=`<div class="empty">Kunne ikke hente din afregning. Bed din vognmand om hjælp.</div>`;
+  }
+})();
+</script>
+</body>
+</html>
