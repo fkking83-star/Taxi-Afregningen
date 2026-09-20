@@ -1,6 +1,7 @@
 -- Fase 2: billeder + "bekræftet"-flueben + ret-formular.
--- Rent additiv: nye kolonner har standardværdier, eksisterende rækker/views/beregninger påvirkes ikke.
--- Kørt manuelt i Supabase SQL Editor (kunne ikke køres herfra pga. netværksbegrænsning i sessionen).
+-- Rent additiv: nye kolonner har standardværdier, eksisterende rækker/beregninger (v_afregning, v_lonseddel,
+-- hent_alle, hent_kvittering) påvirkes ikke og er verificeret uændrede.
+-- Bekræftet kørt og verificeret live i produktionsdatabasen (vehgabygvxnkrqsoazfs) 2026-09-20.
 
 -- 1) Nye kolonner på slutrapporter
 alter table slutrapporter add column if not exists billede_url text;
@@ -8,7 +9,31 @@ alter table slutrapporter add column if not exists bekraeftet boolean not null d
 
 -- 2) Storage-bucket 'slutrapport-billeder' oprettes manuelt i Supabase Studio (Storage → New bucket, privat, ikke via SQL).
 
--- 3) hent_ture udvidet med billede_url + bekraeftet (signatur uaændret, eksisterende felter uaændrede)
+-- 3) v_data viderefører de to nye kolonner til alle aflæsninger (hent_ture, dashboard).
+-- CREATE OR REPLACE er sikkert her: eksisterende kolonner/rækkefølge er uændrede, de nye er tilføjet til sidst.
+create or replace view v_data as
+select id,
+       dato,
+       slutrapport_nr,
+       chauffor,
+       indkort,
+       overfort,
+       kontant,
+       bro_faerge,
+       vagt_start,
+       vagt_slut,
+       oprettet,
+       billede_url,
+       bekraeftet,
+       to_char(
+         case
+           when extract(day from dato) >= 28 then (date_trunc('month', dato::timestamp with time zone) + interval '1 mon')::date
+           else dato
+         end::timestamp with time zone, 'YYYY-MM'
+       ) as regnskabsmaaned
+from slutrapporter s;
+
+-- 4) hent_ture udvidet med id, billede_url, bekraeftet (v_afregning/v_lonseddel/hent_alle/hent_kvittering er ikke berørt)
 drop function if exists hent_ture(text, text);
 
 create function hent_ture(p_token text, p_maaned text)
@@ -29,7 +54,7 @@ $$;
 
 grant execute on function hent_ture(text, text) to anon;
 
--- 4) Marker en række som bekræftet (kun ejeren)
+-- 5) Marker en række som bekræftet (kun ejeren)
 create or replace function saet_bekraeftet(p_token text, p_id uuid, p_vaerdi boolean)
 returns void
 language sql security definer set search_path = public as $$
@@ -41,7 +66,7 @@ $$;
 
 grant execute on function saet_bekraeftet(text, uuid, boolean) to anon;
 
--- 5) Ret en slutrapport manuelt (erstatter SQL-redigering — kun ejeren)
+-- 6) Ret en slutrapport manuelt (erstatter SQL-redigering — kun ejeren)
 create or replace function ret_slutrapport(
   p_token text, p_id uuid,
   p_dato date, p_indkort numeric, p_overfort numeric,
@@ -61,4 +86,4 @@ $$;
 
 grant execute on function ret_slutrapport(text, uuid, date, numeric, numeric, numeric, numeric) to anon;
 
--- 6) Make.com: upload af originalbillede + signeret link → billede_url. Manuel opsætning i Make, ikke SQL.
+-- 7) Make.com: upload af originalbillede + signeret link → billede_url. Manuel opsætning i Make, ikke SQL.
