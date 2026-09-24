@@ -50,12 +50,23 @@
   .cfg{background:#FFF6D9;border:1px solid #F0D98A;color:#6B5600;border-radius:12px;padding:14px;font-size:14px;margin-bottom:18px}
   .hidden{display:none !important}
   .thumb{width:44px;height:44px;object-fit:cover;border-radius:8px;border:1px solid var(--line);cursor:zoom-in;display:block}
+  .billede-mangler{color:var(--muted);font-size:12px}
+  .billede-link{font-size:12px;cursor:zoom-in}
   .ret-billede-wrap{display:flex;flex-direction:column;gap:4px}
   .ret-billede-wrap .hint{font-size:11px;color:var(--muted)}
-  .ret-billede{max-width:240px;max-height:180px;border-radius:10px;border:1px solid var(--line);cursor:zoom-in;object-fit:contain;background:#F0F1F4;display:block}
+  .ret-billede{max-width:360px;max-height:360px;border-radius:10px;border:1px solid var(--line);cursor:zoom-in;object-fit:contain;background:#F0F1F4;display:block}
   .ret-billede-empty{width:180px;height:120px;border-radius:10px;border:1px dashed var(--line);display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:13px;background:#F9FAFB}
-  #lightbox{position:fixed;inset:0;background:rgba(20,24,31,.92);display:flex;align-items:center;justify-content:center;padding:24px;z-index:1000;cursor:zoom-out}
-  #lightbox img{max-width:100%;max-height:100%;border-radius:8px;box-shadow:0 10px 40px rgba(0,0,0,.5)}
+  /* Sidepanel (ikke fuldskærm), så Ret-felterne kan bruges mens billedet er åbent */
+  #lightbox{position:fixed;top:0;right:0;bottom:0;width:min(50vw,640px);background:#14181F;z-index:1000;display:flex;flex-direction:column;box-shadow:-8px 0 30px rgba(0,0,0,.25)}
+  #lightbox .lb-bar{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:10px 14px;color:#fff;font-size:13px;border-bottom:1px solid #2A303B}
+  #lightbox .lb-bar a{color:#A7ADBA;font-size:12px;margin-right:10px}
+  #lightbox .lb-bar button{background:transparent;border:1px solid #3A414D;color:#fff;border-radius:8px;padding:4px 10px;cursor:pointer;font-size:13px}
+  #lightbox .lb-body{flex:1;overflow:auto;display:flex;align-items:center;justify-content:center;padding:12px}
+  #lightbox img{max-width:100%;max-height:100%;border-radius:6px;cursor:zoom-in}
+  #lightbox.zoom .lb-body{align-items:flex-start;justify-content:flex-start}
+  #lightbox.zoom img{max-width:none;max-height:none;cursor:zoom-out}
+  @media (min-width:900px){ body.lb-open main{margin-right:min(50vw,640px)} }
+  @media (max-width:899px){ #lightbox{width:100%} }
 </style>
 </head>
 <body>
@@ -100,11 +111,15 @@
     <div id="rapporter"><div class="empty">—</div></div>
     <div class="note">Røde rækker = mistænkt dublet (samme dato og beløb). Ret/slet i Supabase hvis det er en dublet.</div>
   </div>
-  <p style="text-align:center;font-size:11px;color:#B7BCC6;margin:14px 0 0">dashboard v2026-09-23</p>
+  <p style="text-align:center;font-size:11px;color:#B7BCC6;margin:14px 0 0">dashboard v2026-09-24</p>
 </main>
 
-<div id="lightbox" class="hidden" onclick="closeLightbox()">
-  <img id="lightboxImg" src="" alt="Slutrapport-billede">
+<div id="lightbox" class="hidden" role="dialog" aria-label="Billede af slutrapport">
+  <div class="lb-bar">
+    <span id="lightboxTitel">Slutrapport</span>
+    <span><a id="lightboxAaben" href="#" target="_blank" rel="noopener">Åbn i ny fane</a><button type="button" onclick="closeLightbox()">Luk ✕</button></span>
+  </div>
+  <div class="lb-body"><img id="lightboxImg" alt="Slutrapport-billede" title="Klik for at zoome"></div>
 </div>
 
 <script>
@@ -120,6 +135,7 @@ const DRIVERS = ["Fuad","Faysal","Abdikarin","Qaalid","Adan"];
 const $ = id => document.getElementById(id);
 const kr = n => (n===null||n===undefined||n==="") ? "–"
   : Number(n).toLocaleString("da-DK",{minimumFractionDigits:2,maximumFractionDigits:2});
+const escAttr = s => String(s).replace(/&/g,"&amp;").replace(/"/g,"&quot;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
 
 async function rpc(fn,args){
   const r = await fetch(`${SUPABASE_URL}/rest/v1/rpc/${fn}`, {
@@ -214,12 +230,9 @@ function renderRapporter(rows){
     const dStyle = d !== 0 ? ' style="color:var(--red);font-weight:700"' : '';
     const kStyle = kon > 0 ? ' style="color:var(--green);font-weight:700"' : '';
     const rid = r.id || "";
-    const billede = r.billede_url
-      ? `<img class="thumb" src="${r.billede_url}" alt="Billede af slutrapport" onclick="openLightbox('${r.billede_url}')" title="Klik for at se billedet">`
-      : `<span style="color:var(--muted);font-size:12px">–</span>`;
-    const retBillede = r.billede_url
-      ? `<div class="ret-billede-wrap"><img class="ret-billede" src="${r.billede_url}" alt="Billede af slutrapport" onclick="openLightbox('${r.billede_url}')" title="Klik for at forstørre"><span class="hint">Klik for at forstørre</span></div>`
-      : `<div class="ret-billede-wrap"><div class="ret-billede-empty">Intet billede</div></div>`;
+    // Pladsholdere: udskiftes af visBilleder() når et billede faktisk findes (ellers står "–" / "Intet billede")
+    const billede = `<span class="billede-mangler" data-billede-rid="${rid}" data-billede-type="link">–</span>`;
+    const retBillede = `<div class="ret-billede-wrap" data-billede-rid="${rid}" data-billede-type="ret"><div class="ret-billede-empty">Intet billede</div></div>`;
     const checked = r.bekraeftet ? "checked" : "";
     return `<tr class="${dup?'dup':''}" id="row-${rid}">
       <td>${r.dato||""}</td><td>${r.slutrapport_nr||""}</td>
@@ -254,17 +267,92 @@ function renderRapporter(rows){
     <tr><th>Dato</th><th>Slutrap.</th><th style="text-align:right">Indkørt</th>
         <th style="text-align:right">Overført</th><th style="text-align:right">Diff</th>
         <th style="text-align:right">Kontant</th><th>Vagt</th><th>Billede</th><th>Bekræftet</th><th></th><th></th></tr>${body}</table></div>`;
+  visBilleder(rows);
 }
 
-function openLightbox(url){
+/* ===== Billeder: Storage-filnavn = {slutrapport_nr}_{chauffor}.jpg i den offentlige bucket ===== */
+const BILLED_BASE = `${SUPABASE_URL}/storage/v1/object/public/fejlede-billeder/`;
+
+// billede_url bruges først hvis udfyldt; ellers bygges linket selv. Storage er case-sensitiv,
+// så navnet prøves som gemt (trimmet), med samlede mellemrum, og med små bogstaver.
+function billedKandidater(r){
+  const urls = [];
+  if(r.billede_url) urls.push(String(r.billede_url).trim());
+  const nr = String(r.slutrapport_nr ?? "").trim();
+  const navn = String(r.chauffor ?? "").trim();
+  if(nr && navn){
+    for(const v of [navn, navn.replace(/\s+/g," "), navn.toLowerCase()]){
+      urls.push(BILLED_BASE + encodeURIComponent(`${nr}_${v}.jpg`));
+    }
+  }
+  return [...new Set(urls.filter(Boolean))];
+}
+
+// Kun fundne billeder caches — et billede der mangler nu, kan være uploadet ved næste visning.
+const BILLED_CACHE = new Map();
+function billedFindes(url){
+  if(!BILLED_CACHE.has(url)){
+    const p = new Promise(res=>{
+      const img = new Image();
+      img.onload = ()=>res(true);
+      img.onerror = ()=>res(false);
+      img.src = url;
+    }).then(ok=>{ if(!ok) BILLED_CACHE.delete(url); return ok; });
+    BILLED_CACHE.set(url, p);
+  }
+  return BILLED_CACHE.get(url);
+}
+async function findBillede(kandidater){
+  for(const u of kandidater){ if(await billedFindes(u)) return u; }
+  return null;
+}
+
+function visBilleder(rows){
+  rows.forEach(r=>{
+    if(!r.id) return;
+    findBillede(billedKandidater(r)).then(url=>{
+      if(!url) return;
+      const titel = `${r.chauffor||""} · slutrapport ${r.slutrapport_nr||""} · ${r.dato||""}`;
+      document.querySelectorAll(`[data-billede-rid="${r.id}"]`).forEach(el=>{
+        if(el.dataset.billedeType==="ret"){
+          const img = document.createElement("img");
+          img.className = "ret-billede"; img.src = url; img.alt = "Billede af slutrapport";
+          img.title = "Klik for at forstørre"; img.dataset.lightbox = url; img.dataset.titel = titel;
+          const hint = document.createElement("span");
+          hint.className = "hint"; hint.textContent = "Klik for at forstørre";
+          el.replaceChildren(img, hint);
+        }else{
+          const a = document.createElement("a");
+          a.className = "billede-link"; a.href = url; a.textContent = "📷 Se";
+          a.dataset.lightbox = url; a.dataset.titel = titel;
+          el.replaceWith(a);
+        }
+      });
+    });
+  });
+}
+
+function openLightbox(url, titel){
   if(!url) return;
   $("lightboxImg").src = url;
+  $("lightboxAaben").href = url;
+  $("lightboxTitel").textContent = titel || "Slutrapport";
+  $("lightbox").classList.remove("zoom");
   $("lightbox").classList.remove("hidden");
+  document.body.classList.add("lb-open");
 }
 function closeLightbox(){
   $("lightbox").classList.add("hidden");
-  $("lightboxImg").src = "";
+  document.body.classList.remove("lb-open");
+  $("lightboxImg").removeAttribute("src");
 }
+document.addEventListener("click", e=>{
+  const el = e.target.closest("[data-lightbox]");
+  if(!el || e.button!==0 || e.ctrlKey || e.metaKey || e.shiftKey) return;
+  e.preventDefault();
+  openLightbox(el.dataset.lightbox, el.dataset.titel);
+});
+$("lightboxImg").addEventListener("click", ()=>$("lightbox").classList.toggle("zoom"));
 document.addEventListener("keydown", e => { if(e.key==="Escape") closeLightbox(); });
 
 async function toggleBekraeft(id, vaerdi){
@@ -303,7 +391,7 @@ async function loadFejl(){
         </div>
         <div style="color:var(--red);font-size:14px;margin:4px 0">${r.fejl_besked||"Kunne ikke behandles"}</div>
         ${r.filename?`<div style="font-size:12px;color:var(--muted)">Fil: ${r.filename}</div>`:""}
-        ${r.billede_url?`<div style="margin-top:8px;display:flex;align-items:center;gap:8px"><img class="thumb" src="${r.billede_url}" alt="Billede" onclick="openLightbox('${r.billede_url}')" title="Klik for at se billedet"><a href="${r.billede_url}" target="_blank" rel="noopener" style="font-size:12px">📷 Se</a></div>`:""}
+        ${r.billede_url?`<div style="margin-top:8px;display:flex;align-items:center;gap:8px"><img class="thumb" src="${escAttr(r.billede_url)}" alt="Billede" data-lightbox="${escAttr(r.billede_url)}" data-titel="${escAttr((r.chauffor||"")+" · fejlet upload")}" title="Klik for at se billedet" onerror="this.parentElement.style.display='none'"><a class="billede-link" href="${escAttr(r.billede_url)}" data-lightbox="${escAttr(r.billede_url)}" data-titel="${escAttr((r.chauffor||"")+" · fejlet upload")}">📷 Se</a></div>`:""}
         <button onclick="markerRettet('${r.id}')" style="margin-top:8px;border:1px solid var(--line);background:#fff;border-radius:8px;padding:6px 12px;font-size:13px;cursor:pointer">Marker som rettet</button>
       </div>`).join("");
   }catch(e){ $("fejlCard").style.display="none"; }
