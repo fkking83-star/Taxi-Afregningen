@@ -249,6 +249,8 @@ function renderRapporter(rows){
         <div style="display:flex;gap:16px;flex-wrap:wrap;align-items:flex-start">
           ${retBillede}
           <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:end">
+            <div><label style="font-size:12px;color:var(--muted);display:block">Slutrapport nr</label>
+              <input type="text" inputmode="numeric" id="ret-nr-${rid}" value="${escAttr(r.slutrapport_nr||"")}" data-orig="${escAttr(r.slutrapport_nr||"")}" style="width:110px;padding:6px;border:1px solid var(--line);border-radius:6px"></div>
             <div><label style="font-size:12px;color:var(--muted);display:block">Dato</label>
               <input type="date" id="ret-dato-${rid}" value="${r.dato||""}" style="padding:6px;border:1px solid var(--line);border-radius:6px"></div>
             <div><label style="font-size:12px;color:var(--muted);display:block">Indkørt</label>
@@ -307,10 +309,34 @@ async function findBillede(kandidater){
   return null;
 }
 
+/* Robust opslag: filnavnet i bucket'en er {slutrapport_nr}_{fører}.jpg, hvor føreren
+   ofte er det fulde navn fra bonen (fx "Adan abdi Abdulle"), ikke databasens korte
+   chauffor ("Adan"). Vi slår derfor det faktiske filnavn op ud fra NUMMERET via en
+   ejer-token-beskyttet RPC, så suffikset (førernavnet) er ligegyldigt. */
+const BILLED_URL_MAP = new Map(); // slutrapport_nr -> fuld public URL
+async function hentBilledNavne(numre){
+  BILLED_URL_MAP.clear();
+  const liste = [...new Set((numre||[]).map(n=>String(n ?? "").trim()).filter(Boolean))];
+  if(!liste.length) return;
+  let rows;
+  try{ rows = await rpc("hent_billeder", {p_token:OWNER_TOKEN, p_numre:liste}); }
+  catch(e){ return; } // RPC ikke deployet endnu -> fald tilbage til navne-gæt nedenfor
+  (rows||[]).forEach(row=>{
+    const navn = row && row.navn; if(!navn) return;
+    const i = String(navn).indexOf("_"); if(i<1) return;   // nummer = alt før første "_"
+    const nr = String(navn).slice(0,i);
+    if(!BILLED_URL_MAP.has(nr)) BILLED_URL_MAP.set(nr, BILLED_BASE + encodeURIComponent(navn));
+  });
+}
+
 function visBilleder(rows){
   rows.forEach(r=>{
     if(!r.id) return;
-    findBillede(billedKandidater(r)).then(url=>{
+    // 1) udfyldt billede_url  2) faktisk filnavn fra RPC (suffix-agnostisk)  3) navne-gæt
+    const forud = r.billede_url ? String(r.billede_url).trim()
+                : (BILLED_URL_MAP.get(String(r.slutrapport_nr ?? "").trim()) || null);
+    const p = forud ? Promise.resolve(forud) : findBillede(billedKandidater(r));
+    p.then(url=>{
       if(!url) return;
       const titel = `${r.chauffor||""} · slutrapport ${r.slutrapport_nr||""} · ${r.dato||""}`;
       document.querySelectorAll(`[data-billede-rid="${r.id}"]`).forEach(el=>{
@@ -366,12 +392,25 @@ async function gemRet(id){
   const ind = parseFloat($("ret-ind-"+id).value);
   const ovf = parseFloat($("ret-ovf-"+id).value);
   const kon = parseFloat($("ret-kon-"+id).value);
+  const nrEl = $("ret-nr-"+id);
+  const nyNr = (nrEl.value||"").trim();
+  const origNr = (nrEl.dataset.orig||"").trim();
+  const base = {
+    p_token:OWNER_TOKEN, p_id:id, p_dato:dato,
+    p_indkort: isNaN(ind)?null:ind, p_overfort: isNaN(ovf)?null:ovf,
+    p_kontant: isNaN(kon)?null:kon, p_bro_faerge: null
+  };
   try{
-    await rpc("ret_slutrapport", {
-      p_token:OWNER_TOKEN, p_id:id, p_dato:dato,
-      p_indkort: isNaN(ind)?null:ind, p_overfort: isNaN(ovf)?null:ovf,
-      p_kontant: isNaN(kon)?null:kon, p_bro_faerge: null
-    });
+    try{
+      await rpc("ret_slutrapport", { ...base, p_slutrapport_nr: nyNr || null });
+    }catch(e){
+      // HTTP 404 = ret_slutrapport har ikke p_slutrapport_nr endnu (DB ikke opdateret).
+      // Gem de øvrige felter alligevel, og sig kun til hvis nummeret rent faktisk blev ændret.
+      if(String(e.message).includes("404")){
+        await rpc("ret_slutrapport", base);
+        if(nyNr !== origNr) alert("Tallene er gemt, men slutrapport-nummeret kræver at ret_slutrapport opdateres i databasen først (se migrationen).");
+      } else throw e;
+    }
     lukRet(id);
     refresh();
   }catch(e){ alert("Kunne ikke gemme rettelsen: " + e.message); }
@@ -417,7 +456,9 @@ async function refresh(){
   // 2) Slutrapporter — i sin egen try, så en fejl her IKKE fjerner lønsedlen
   try{
     const rap = await rpc("hent_ture", {p_token:OWNER_TOKEN, p_maaned:m});
-    renderRapporter(rap.filter(r=>r.chauffor===d));
+    const mine = rap.filter(r=>r.chauffor===d);
+    await hentBilledNavne(mine.map(r=>r.slutrapport_nr));   // slå faktiske filnavne op før render
+    renderRapporter(mine);
   }catch(e){
     $("rapporter").innerHTML = `<div class="empty">Kunne ikke hente ture. (${e.message})</div>`;
   }
