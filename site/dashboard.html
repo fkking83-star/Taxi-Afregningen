@@ -309,23 +309,22 @@ async function findBillede(kandidater){
   return null;
 }
 
-/* Robust opslag: filnavnet i bucket'en er {slutrapport_nr}_{fører}.jpg, hvor føreren
-   ofte er det fulde navn fra bonen (fx "Adan abdi Abdulle"), ikke databasens korte
-   chauffor ("Adan"). Vi slår derfor det faktiske filnavn op ud fra NUMMERET via en
-   ejer-token-beskyttet RPC, så suffikset (førernavnet) er ligegyldigt. */
+/* Filnavne i bucket'en: {nr}_{driver_id}_{tidsstempel}.jpg (nyt) eller {nr}__{tidsstempel}.jpg
+   (gamle filer uden fører). Det faktiske filnavn slås op via den ejer-token-beskyttede RPC. */
 const BILLED_URL_MAP = new Map(); // slutrapport_nr -> fuld public URL
-async function hentBilledNavne(numre){
+// RPC'en vælger selv den rigtige fil pr. nummer: chaufførens egen ({nr}_{driver_id}_) før gamle
+// filer uden fører ({nr}__), nyeste først. Numre er ikke unikke på tværs af biler, så chaufføren skal med.
+async function hentBilledNavne(numre, chauffor){
   BILLED_URL_MAP.clear();
   const liste = [...new Set((numre||[]).map(n=>String(n ?? "").trim()).filter(Boolean))];
   if(!liste.length) return;
   let rows;
-  try{ rows = await rpc("hent_billeder", {p_token:OWNER_TOKEN, p_numre:liste}); }
-  catch(e){ return; } // RPC ikke deployet endnu -> fald tilbage til navne-gæt nedenfor
+  try{ rows = await rpc("hent_billeder", {p_token:OWNER_TOKEN, p_numre:liste, p_chauffor:chauffor}); }
+  catch(e){ return; } // RPC ikke opdateret endnu -> fald tilbage til navne-gæt nedenfor
   (rows||[]).forEach(row=>{
     const navn = row && row.navn; if(!navn) return;
-    const i = String(navn).indexOf("_"); if(i<1) return;   // nummer = alt før første "_"
-    const nr = String(navn).slice(0,i);
-    if(!BILLED_URL_MAP.has(nr)) BILLED_URL_MAP.set(nr, BILLED_BASE + encodeURIComponent(navn));
+    const nr = String(row.slutrapport_nr ?? String(navn).split("_")[0]).trim();
+    if(nr && !BILLED_URL_MAP.has(nr)) BILLED_URL_MAP.set(nr, BILLED_BASE + encodeURIComponent(navn));
   });
 }
 
@@ -457,7 +456,7 @@ async function refresh(){
   try{
     const rap = await rpc("hent_ture", {p_token:OWNER_TOKEN, p_maaned:m});
     const mine = rap.filter(r=>r.chauffor===d);
-    await hentBilledNavne(mine.map(r=>r.slutrapport_nr));   // slå faktiske filnavne op før render
+    await hentBilledNavne(mine.map(r=>r.slutrapport_nr), d);   // slå faktiske filnavne op før render
     renderRapporter(mine);
   }catch(e){
     $("rapporter").innerHTML = `<div class="empty">Kunne ikke hente ture. (${e.message})</div>`;
