@@ -39,6 +39,7 @@
   td{padding:8px;border-bottom:1px solid #F0F1F4;font-variant-numeric:tabular-nums;white-space:nowrap}
   tr.dup td{background:var(--red-bg);color:var(--red)}
   .flag{font-size:12px;color:var(--red);font-weight:700}
+  td.nr-afvig{background:#FFF6D9 !important;color:#6B5600 !important;font-weight:700;cursor:help}
   .nrow{display:flex;align-items:center;padding:9px 0;border-bottom:1px solid #F0F1F4;font-size:16px}
   .nrow .num{width:24px;color:var(--muted);font-size:13px;flex:none}
   .nrow .nlbl{flex:1}
@@ -109,9 +110,10 @@
   <div class="card">
     <h2>Slutrapporter (til dobbelt-tjek)</h2>
     <div id="rapporter"><div class="empty">—</div></div>
-    <div class="note">Røde rækker = mistænkt dublet (samme dato og beløb). Ret/slet i Supabase hvis det er en dublet.</div>
+    <div class="note">Røde rækker = mistænkt dublet (samme dato og beløb). Ret/slet i Supabase hvis det er en dublet.
+      Gult ⚠ nummer = afviger meget fra nabo-vagternes numre (fx OCR-forveksling af 18/19) — hold musen over for forslag, ret via Ret.</div>
   </div>
-  <p style="text-align:center;font-size:11px;color:#B7BCC6;margin:14px 0 0">dashboard v2026-09-24</p>
+  <p style="text-align:center;font-size:11px;color:#B7BCC6;margin:14px 0 0">dashboard v2026-09-25</p>
 </main>
 
 <div id="lightbox" class="hidden" role="dialog" aria-label="Billede af slutrapport">
@@ -218,8 +220,37 @@ function buildLon(row, mine){
   return h;
 }
 
+/* OCR forveksler ofte "18" og "19" i slutrapport-nummeret. Numrene stiger jævnt vagt for vagt,
+   så et nummer der ligger langt fra BEGGE nabo-vagter (sorteret efter dato/vagtstart) markeres gult.
+   Kan en 18<->19-ombytning bringe nummeret tæt på naboerne, vises den som forslag. */
+const NR_AFVIG = 50;
+function nrAdvarsler(rows){
+  const tal = s => { const t = String(s ?? "").trim(); return /^\d+$/.test(t) ? Number(t) : null; };
+  const seq = rows.filter(r=>r.id && tal(r.slutrapport_nr)!==null)
+    .map(r=>({ id:r.id, txt:String(r.slutrapport_nr).trim(), nr:tal(r.slutrapport_nr), dato:r.dato||"", vs:r.vagt_start||"" }))
+    .sort((a,b)=> a.dato.localeCompare(b.dato) || a.vs.localeCompare(b.vs));
+  const ud = {};
+  seq.forEach((s,i)=>{
+    const naboer = [seq[i-1], seq[i+1]].filter(Boolean);
+    if(!naboer.length || !naboer.every(n=>Math.abs(n.nr - s.nr) > NR_AFVIG)) return;
+    const forslag = [];
+    for(const [a,b] of [["18","19"],["19","18"]]){
+      let p = s.txt.indexOf(a);
+      while(p >= 0){
+        const k = s.txt.slice(0,p) + b + s.txt.slice(p+2);
+        if(naboer.every(n=>Math.abs(n.nr - Number(k)) <= NR_AFVIG)) forslag.push(k);
+        p = s.txt.indexOf(a, p+1);
+      }
+    }
+    ud[s.id] = `Nummeret afviger meget fra nabo-vagterne (${naboer.map(n=>n.txt).join(", ")}).`
+             + (forslag.length ? ` Måske ${[...new Set(forslag)].join(" eller ")}? (OCR forveksler 18/19)` : " Tjek billedet.");
+  });
+  return ud;
+}
+
 function renderRapporter(rows){
   if(!rows||rows.length===0){ $("rapporter").innerHTML=`<div class="empty">Ingen ture.</div>`; return; }
+  const nrAdv = nrAdvarsler(rows);
   // markér mistænkte dubletter (samme dato + indkørt)
   const key=r=>r.dato+"|"+r.indkort;
   const count={}; rows.forEach(r=>count[key(r)]=(count[key(r)]||0)+1);
@@ -235,7 +266,9 @@ function renderRapporter(rows){
     const retBillede = `<div class="ret-billede-wrap" data-billede-rid="${rid}" data-billede-type="ret"><div class="ret-billede-empty">Intet billede</div></div>`;
     const checked = r.bekraeftet ? "checked" : "";
     return `<tr class="${dup?'dup':''}" id="row-${rid}">
-      <td>${r.dato||""}</td><td>${r.slutrapport_nr||""}</td>
+      <td>${r.dato||""}</td>${nrAdv[rid]
+        ? `<td class="nr-afvig" title="${escAttr(nrAdv[rid])}">⚠ ${r.slutrapport_nr||""}</td>`
+        : `<td>${r.slutrapport_nr||""}</td>`}
       <td style="text-align:right">${kr(ind)}</td>
       <td style="text-align:right">${kr(ovf)}</td>
       <td style="text-align:right"${dStyle}>${kr(d)}</td>
