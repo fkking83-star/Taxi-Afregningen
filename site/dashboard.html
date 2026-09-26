@@ -113,7 +113,7 @@
     <div class="note">Røde rækker = mistænkt dublet (samme dato og beløb). Ret/slet i Supabase hvis det er en dublet.
       Gult ⚠ nummer = afviger meget fra nabo-vagternes numre (fx OCR-forveksling af 18/19) — hold musen over for forslag, ret via Ret.</div>
   </div>
-  <p style="text-align:center;font-size:11px;color:#B7BCC6;margin:14px 0 0">dashboard v2026-09-25</p>
+  <p style="text-align:center;font-size:11px;color:#B7BCC6;margin:14px 0 0">dashboard v2026-09-26</p>
 </main>
 
 <div id="lightbox" class="hidden" role="dialog" aria-label="Billede af slutrapport">
@@ -221,9 +221,10 @@ function buildLon(row, mine){
 }
 
 /* OCR forveksler ofte "18" og "19" i slutrapport-nummeret. Numrene stiger jævnt vagt for vagt,
-   så et nummer der ligger langt fra BEGGE nabo-vagter (sorteret efter dato/vagtstart) markeres gult.
-   Kan en 18<->19-ombytning bringe nummeret tæt på naboerne, vises den som forslag. */
+   så et nummer der ligger langt fra medianen af de omkringliggende vagter (sorteret efter dato/vagtstart)
+   markeres gult. Kan en 18<->19-ombytning bringe nummeret tæt på medianen, vises den som forslag. */
 const NR_AFVIG = 50;
+const NR_NABOER = 3; // antal vagter på hver side, der sammenlignes med
 function nrAdvarsler(rows){
   const tal = s => { const t = String(s ?? "").trim(); return /^\d+$/.test(t) ? Number(t) : null; };
   const seq = rows.filter(r=>r.id && tal(r.slutrapport_nr)!==null)
@@ -231,18 +232,24 @@ function nrAdvarsler(rows){
     .sort((a,b)=> a.dato.localeCompare(b.dato) || a.vs.localeCompare(b.vs));
   const ud = {};
   seq.forEach((s,i)=>{
-    const naboer = [seq[i-1], seq[i+1]].filter(Boolean);
-    if(!naboer.length || !naboer.every(n=>Math.abs(n.nr - s.nr) > NR_AFVIG)) return;
+    // Sammenlign med medianen af op til NR_NABOER vagter på hver side, så et korrekt nummer
+    // ikke markeres, bare fordi begge de nærmeste naboer selv er fejllæst.
+    const naboer = [...seq.slice(Math.max(0, i-NR_NABOER), i), ...seq.slice(i+1, i+1+NR_NABOER)];
+    if(!naboer.length) return;
+    const v = naboer.map(n=>n.nr).sort((a,b)=>a-b), m = v.length >> 1;
+    const median = v.length % 2 ? v[m] : (v[m-1] + v[m]) / 2;
+    if(Math.abs(s.nr - median) <= NR_AFVIG) return;
     const forslag = [];
     for(const [a,b] of [["18","19"],["19","18"]]){
       let p = s.txt.indexOf(a);
       while(p >= 0){
         const k = s.txt.slice(0,p) + b + s.txt.slice(p+2);
-        if(naboer.every(n=>Math.abs(n.nr - Number(k)) <= NR_AFVIG)) forslag.push(k);
+        if(Math.abs(Number(k) - median) <= NR_AFVIG) forslag.push(k);
         p = s.txt.indexOf(a, p+1);
       }
     }
-    ud[s.id] = `Nummeret afviger meget fra nabo-vagterne (${naboer.map(n=>n.txt).join(", ")}).`
+    const naermeste = [seq[i-1], seq[i+1]].filter(Boolean).map(n=>n.txt).join(", ");
+    ud[s.id] = `Nummeret afviger meget fra nabo-vagterne (${naermeste}; forventet ca. ${Math.round(median)}).`
              + (forslag.length ? ` Måske ${[...new Set(forslag)].join(" eller ")}? (OCR forveksler 18/19)` : " Tjek billedet.");
   });
   return ud;
