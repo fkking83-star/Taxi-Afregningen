@@ -121,9 +121,9 @@
     <h2>Slutrapporter (til dobbelt-tjek)</h2>
     <div id="rapporter"><div class="empty">—</div></div>
     <div class="note">Røde rækker = mistænkt dublet (samme dato og beløb). Ret/slet i Supabase hvis det er en dublet.
-      Gult ⚠ nummer = afviger meget fra nabo-vagternes numre (fx OCR-forveksling af 18/19) — hold musen over for forslag, ret via Ret.</div>
+      Gult ⚠ nummer = passer ikke med nogen bils nummerrække (alle chaufførers vagter tæller med, da bilerne deles) — fx OCR-forveksling af 18/19. Hold musen over for forslag, ret via Ret.</div>
   </div>
-  <p style="text-align:center;font-size:11px;color:#B7BCC6;margin:14px 0 0">dashboard v2026-09-27</p>
+  <p style="text-align:center;font-size:11px;color:#B7BCC6;margin:14px 0 0">dashboard v2026-09-28</p>
 </main>
 
 <div id="lightbox" class="hidden" role="dialog" aria-label="Billede af slutrapport">
@@ -239,44 +239,53 @@ function buildLon(row, mine){
   return h;
 }
 
-/* OCR forveksler ofte "18" og "19" i slutrapport-nummeret. Numrene stiger jævnt vagt for vagt,
-   så et nummer der ligger langt fra medianen af de omkringliggende vagter (sorteret efter dato/vagtstart)
-   markeres gult. Kan en 18<->19-ombytning bringe nummeret tæt på medianen, vises den som forslag. */
+/* OCR forveksler ofte "18" og "19" i slutrapport-nummeret. Nummeret tæller pr. BIL (taxameter), ikke pr.
+   chauffør, og bilerne deles. Derfor sammenlignes med ALLE chaufførers vagter i måneden: et nummer er
+   troværdigt, hvis en anden vagt inden for NR_DAGE dage har et nummer tæt på (højst NR_AFVIG fra), og
+   rækkefølgen passer med at taxameteret kun tæller op (senere vagt = højere nummer; ±1 dag tolereres).
+   Så giver bilskift, lån af en anden bil og delte biler ingen alarm. Kan en 18<->19-ombytning gøre
+   nummeret troværdigt, vises den som forslag. */
 const NR_AFVIG = 50;
-const NR_NABOER = 3; // antal vagter på hver side, der sammenlignes med
-function nrAdvarsler(rows){
+const NR_DAGE = 10;   // hvor mange dage frem/tilbage der ledes efter vagter i samme bil
+const NR_NABOER = 3;  // chaufførens egne vagter på hver side, brugt til "forventet ca."
+function nrAdvarsler(rows, alle){
   const tal = s => { const t = String(s ?? "").trim(); return /^\d+$/.test(t) ? Number(t) : null; };
-  const seq = rows.filter(r=>r.id && tal(r.slutrapport_nr)!==null)
-    .map(r=>({ id:r.id, txt:String(r.slutrapport_nr).trim(), nr:tal(r.slutrapport_nr), dato:r.dato||"", vs:r.vagt_start||"" }))
-    .sort((a,b)=> a.dato.localeCompare(b.dato) || a.vs.localeCompare(b.vs));
+  const dag = d => { const t = Date.parse(String(d||"") + "T00:00:00Z"); return isNaN(t) ? null : t / 864e5; };
+  const lav = r => ({ id:r.id, txt:String(r.slutrapport_nr).trim(), nr:tal(r.slutrapport_nr), d:dag(r.dato),
+                      dato:r.dato||"", vs:r.vagt_start||"" });
+  const gyldig = r => r && r.id && tal(r.slutrapport_nr)!==null && dag(r.dato)!==null;
+  const pulje = [...new Map([...(alle||[]), ...rows].filter(gyldig).map(r=>[r.id, lav(r)])).values()];
+  // Understøtter vagt c nummeret n på dag d? (samme bil = tæt nummer, og tælleren går kun op)
+  const passer = (n, d, c) => Math.abs(c.d - d) <= NR_DAGE && Math.abs(c.nr - n) <= NR_AFVIG
+    && (Math.abs(c.d - d) <= 1 || Math.sign(c.nr - n) === Math.sign(c.d - d) || c.nr === n);
+  const seq = rows.filter(gyldig).map(lav).sort((a,b)=> a.dato.localeCompare(b.dato) || a.vs.localeCompare(b.vs));
   const ud = {};
   seq.forEach((s,i)=>{
-    // Sammenlign med medianen af op til NR_NABOER vagter på hver side, så et korrekt nummer
-    // ikke markeres, bare fordi begge de nærmeste naboer selv er fejllæst.
-    const naboer = [...seq.slice(Math.max(0, i-NR_NABOER), i), ...seq.slice(i+1, i+1+NR_NABOER)];
-    if(!naboer.length) return;
-    const v = naboer.map(n=>n.nr).sort((a,b)=>a-b), m = v.length >> 1;
-    const median = v.length % 2 ? v[m] : (v[m-1] + v[m]) / 2;
-    if(Math.abs(s.nr - median) <= NR_AFVIG) return;
+    const andre = pulje.filter(c=>c.id!==s.id);
+    if(!andre.length || andre.some(c=>passer(s.nr, s.d, c))) return;
     const forslag = [];
     for(const [a,b] of [["18","19"],["19","18"]]){
       let p = s.txt.indexOf(a);
       while(p >= 0){
         const k = s.txt.slice(0,p) + b + s.txt.slice(p+2);
-        if(Math.abs(Number(k) - median) <= NR_AFVIG) forslag.push(k);
+        if(andre.some(c=>passer(Number(k), s.d, c))) forslag.push(k);
         p = s.txt.indexOf(a, p+1);
       }
     }
+    const egne = [...seq.slice(Math.max(0, i-NR_NABOER), i), ...seq.slice(i+1, i+1+NR_NABOER)];
+    const v = egne.map(n=>n.nr).sort((a,b)=>a-b), m = v.length >> 1;
+    const median = v.length ? (v.length % 2 ? v[m] : (v[m-1] + v[m]) / 2) : null;
     const naermeste = [seq[i-1], seq[i+1]].filter(Boolean).map(n=>n.txt).join(", ");
-    ud[s.id] = `Nummeret afviger meget fra nabo-vagterne (${naermeste}; forventet ca. ${Math.round(median)}).`
-             + (forslag.length ? ` Måske ${[...new Set(forslag)].join(" eller ")}? (OCR forveksler 18/19)` : " Tjek billedet.");
+    ud[s.id] = `Nummeret passer ikke med nogen bils nummerrække (ingen vagt ±${NR_DAGE} dage med nummer i nærheden`
+             + (naermeste ? `; nabo-vagter: ${naermeste}` : "") + (median!==null ? `; forventet ca. ${Math.round(median)}` : "") + ").";
+    ud[s.id] += forslag.length ? ` Måske ${[...new Set(forslag)].join(" eller ")}? (OCR forveksler 18/19)` : " Tjek billedet (eller om vagten er kørt i en anden bil).";
   });
   return ud;
 }
 
-function renderRapporter(rows){
+function renderRapporter(rows, alle){
   if(!rows||rows.length===0){ $("rapporter").innerHTML=`<div class="empty">Ingen ture.</div>`; return; }
-  const nrAdv = nrAdvarsler(rows);
+  const nrAdv = nrAdvarsler(rows, alle || rows);   // alle = alle chaufførers vagter (bilerne deles)
   // markér mistænkte dubletter (samme dato + indkørt)
   const key=r=>r.dato+"|"+r.indkort;
   const count={}; rows.forEach(r=>count[key(r)]=(count[key(r)]||0)+1);
@@ -646,7 +655,7 @@ async function refresh(){
     const rap = await rpc("hent_ture", {p_token:OWNER_TOKEN, p_maaned:m});
     const mine = rap.filter(r=>r.chauffor===d);
     await hentBilledNavne(mine.map(r=>r.slutrapport_nr), d);   // slå faktiske filnavne op før render
-    renderRapporter(mine);
+    renderRapporter(mine, rap);
   }catch(e){
     $("rapporter").innerHTML = `<div class="empty">Kunne ikke hente ture. (${e.message})</div>`;
   }
