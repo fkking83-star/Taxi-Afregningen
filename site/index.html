@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html lang="da">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+<title>Send slutrapport</title>
+<style>
+  :root {
+    --ink: #14181F;
+    --surface: #F4F5F7;
+    --card: #FFFFFF;
+    --amber: #F5B301;
+    --green: #1E7F53;
+    --green-bg: #E4F3EA;
+    --red: #C4342F;
+    --red-bg: #FBEAE9;
+    --muted: #5B6270;
+    --line: #E3E5EA;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    background: var(--surface);
+    color: var(--ink);
+    min-height: 100dvh;
+    display: flex;
+    flex-direction: column;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+  }
+  header {
+    background: var(--ink);
+    color: #fff;
+    padding: calc(18px + env(safe-area-inset-top)) 20px 18px;
+    border-bottom: 4px solid var(--amber);
+  }
+  header .label { font-size: 13px; letter-spacing: .08em; text-transform: uppercase; color: #A7ADBA; margin: 0; }
+  header .who { font-size: 26px; font-weight: 700; margin: 2px 0 0; }
+  header .lock { font-size: 12px; color: #7E8595; margin: 4px 0 0; }
+  main { flex: 1; padding: 20px; width: 100%; max-width: 540px; margin: 0 auto; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 20px; margin-bottom: 16px; }
+  .hint { color: var(--muted); font-size: 15px; margin: 0 0 16px; }
+  .btn {
+    display: flex; align-items: center; justify-content: center; gap: 10px; width: 100%;
+    border: none; border-radius: 14px; cursor: pointer; font-size: 19px; font-weight: 700;
+    padding: 20px; font-family: inherit; transition: transform .05s ease, opacity .15s ease;
+  }
+  .btn:active { transform: scale(.985); }
+  .btn:disabled { opacity: .55; }
+  .btn-primary { background: var(--amber); color: var(--ink); }
+  .btn-send { background: var(--green); color: #fff; }
+  .btn-ghost { background: transparent; color: var(--ink); border: 2px solid var(--line); font-size: 16px; padding: 14px; }
+  .btn .ic { font-size: 22px; line-height: 1; }
+  .preview-wrap { margin: 0 0 14px; border-radius: 12px; overflow: hidden; border: 1px solid var(--line); background: #f0f0f0; }
+  .preview-wrap img { display: block; width: 100%; height: auto; }
+  .meta { font-size: 13px; color: var(--muted); margin: 0 0 16px; text-align: center; }
+  .status { border-radius: 14px; padding: 22px; text-align: center; margin-bottom: 16px; }
+  .status .big { font-size: 22px; font-weight: 700; margin: 8px 0 4px; }
+  .status .sub { font-size: 16px; margin: 0; }
+  .status-ok { background: var(--green-bg); color: var(--green); }
+  .status-err { background: var(--red-bg); color: var(--red); }
+  .status .emoji { font-size: 44px; line-height: 1; }
+  .vagt {
+    display: inline-block; margin-top: 12px; background: #fff; color: var(--ink);
+    border: 1px solid var(--line); border-radius: 10px; padding: 8px 16px; font-size: 20px; font-weight: 700;
+  }
+  .spinner {
+    width: 34px; height: 34px; border: 4px solid #ffffff66; border-top-color: #fff;
+    border-radius: 50%; animation: spin .8s linear infinite; margin: 0 auto 4px;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .sending { background: var(--ink); color: #fff; }
+  select { width: 100%; font-size: 18px; padding: 16px; border-radius: 12px; border: 1px solid var(--line); font-family: inherit; background: #fff; color: var(--ink); }
+  .notice { background: #FFF6D9; border: 1px solid #F0D98A; color: #6B5600; border-radius: 12px; padding: 14px; font-size: 14px; margin-bottom: 16px; }
+  input[type=file] { position: absolute; width: 1px; height: 1px; opacity: 0; overflow: hidden; }
+  footer { text-align: center; color: var(--muted); font-size: 12px; padding: 0 20px 24px; }
+  .hidden { display: none !important; }
+</style>
+</head>
+<body>
+  <header>
+    <p class="label">Taxi slutrapport</p>
+    <p class="who" id="whoName">Chauffør</p>
+    <p class="lock hidden" id="lockNote">🔒 Personligt link</p>
+  </header>
+
+  <main>
+    <div id="configNotice" class="notice hidden">Siden er ikke koblet til Make endnu. Indsæt webhook-adressen i toppen af filen.</div>
+
+    <div id="pickerCard" class="card hidden">
+      <p class="hint">Vælg dit navn for at komme i gang.</p>
+      <select id="driverSelect"></select>
+    </div>
+
+    <div id="captureCard" class="card">
+      <p class="hint">Tag et tydeligt billede af hele slutrapporten — eller vedhæft et billede fra din telefon. Sørg for at vagt-nummeret er med.</p>
+      <div id="previewArea" class="hidden">
+        <div class="preview-wrap"><img id="previewImg" alt="Dit billede af slutrapporten"></div>
+        <p class="meta" id="fileMeta"></p>
+        <button class="btn btn-send" id="sendBtn"><span class="ic">✓</span> Send slutrapport</button>
+        <div style="height:10px"></div>
+        <button class="btn btn-ghost" id="retakeBtn">Vælg et andet billede</button>
+      </div>
+      <div id="captureArea">
+        <button class="btn btn-primary" id="captureBtn"><span class="ic">📷</span> Tag billede</button>
+        <div style="height:10px"></div>
+        <button class="btn btn-ghost" id="attachBtn"><span class="ic">📎</span> Vedhæft fil</button>
+      </div>
+    </div>
+
+    <div id="sendingBlock" class="status sending hidden">
+      <div class="spinner"></div>
+      <p class="big" style="color:#fff">Sender…</p>
+      <p class="sub" style="color:#C7CCD6">Vent et øjeblik</p>
+    </div>
+
+    <div id="okBlock" class="status status-ok hidden">
+      <div class="emoji">✅</div>
+      <p class="big">Modtaget</p>
+      <p class="sub">Din slutrapport er sendt.</p>
+      <div id="vagtLine"></div>
+      <div style="height:16px"></div>
+      <button class="btn btn-primary" id="nextBtn"><span class="ic">＋</span> Send næste rapport</button>
+    </div>
+
+    <div id="errBlock" class="status status-err hidden">
+      <div class="emoji">⚠️</div>
+      <p class="big">Kunne ikke sendes</p>
+      <p class="sub" id="errMsg">Prøv igen om lidt.</p>
+      <div style="height:16px"></div>
+      <button class="btn btn-primary" id="tryAgainBtn">Prøv igen</button>
+    </div>
+
+    <input type="file" id="cameraInput" accept="image/*" capture="environment">
+    <input type="file" id="galleryInput" accept="image/*">
+  </main>
+
+  <footer>Slutrapport-upload</footer>
+
+<script>
+/* =======================================================================
+   OPSÆTNING — Make Webhook URL
+   ======================================================================= */
+
+const MAKE_WEBHOOK_URL = "https://hook.eu1.make.com/m2mlrycjfejnxos9sr87vcxw22hcvufh";
+
+/* Dine chauffører (id = det korte ord i linket: ?driver=fuad). */
+const DRIVERS = [
+  { id: "fuad",       navn: "Fuad",       nr: "60164100"     },
+  { id: "faysal",     navn: "Faysal",     nr: ""             },
+  { id: "abdikarin",  navn: "Abdikarin",  nr: "252613932902" },
+  { id: "qaalid",     navn: "Qaalid",     nr: "53871525"     },
+  { id: "adan",       navn: "Adan",       nr: "91491038"     },
+];
+
+const MAX_SIDE = 1600;
+const JPEG_Q   = 0.82;
+
+const $ = id => document.getElementById(id);
+let currentDriver = null;
+let currentBlob   = null;
+
+function findDriver(v){
+  if(!v) return null;
+  const k = String(v).trim().toLowerCase();
+  return DRIVERS.find(d => d.id.toLowerCase()===k || d.navn.toLowerCase()===k) || null;
+}
+
+function setDriver(d){
+  currentDriver = d;
+  $("whoName").textContent = d.navn;
+  $("pickerCard").classList.add("hidden");
+  $("captureCard").classList.remove("hidden");
+}
+
+function lockToDriver(d){ setDriver(d); $("lockNote").classList.remove("hidden"); }
+
+function initDriver(){
+  const p = new URLSearchParams(location.search);
+  const fromLink = findDriver(p.get("driver") || p.get("chauffor") || p.get("chauffør") || p.get("id"));
+  if(fromLink){ lockToDriver(fromLink); return; }
+  const sel = $("driverSelect");
+  sel.innerHTML = '<option value="" disabled selected>Vælg navn…</option>' +
+    DRIVERS.map(x => '<option value="'+x.id+'">'+x.navn+'</option>').join("");
+  sel.addEventListener("change", () => setDriver(findDriver(sel.value)));
+  $("pickerCard").classList.remove("hidden");
+  $("captureCard").classList.add("hidden");
+  $("whoName").textContent = "Vælg chauffør";
+}
+
+async function processFile(file){
+  let bitmap;
+  try{ bitmap = await createImageBitmap(file, { imageOrientation:"from-image" }); }
+  catch(e){ bitmap = await loadViaImg(file); }
+  let { width, height } = bitmap;
+  const scale = Math.min(1, MAX_SIDE / Math.max(width, height));
+  width = Math.round(width*scale); height = Math.round(height*scale);
+  const canvas = document.createElement("canvas");
+  canvas.width = width; canvas.height = height;
+  canvas.getContext("2d").drawImage(bitmap, 0, 0, width, height);
+  
+  $("previewImg").src = canvas.toDataURL("image/jpeg", JPEG_Q);
+  currentBlob = await new Promise(res => canvas.toBlob(res, "image/jpeg", JPEG_Q));
+  
+  const kb = Math.round((currentBlob.size) / 1024);
+  $("fileMeta").textContent = "Klar til afsendelse · ca. " + kb + " KB";
+  $("captureArea").classList.add("hidden");
+  $("previewArea").classList.remove("hidden");
+}
+
+function loadViaImg(file){
+  return new Promise((res,rej)=>{ const i=new Image(); i.onload=()=>res(i); i.onerror=rej; i.src=URL.createObjectURL(file); });
+}
+
+async function send(){
+  if(!currentBlob || !currentDriver) return;
+  if(!MAKE_WEBHOOK_URL || MAKE_WEBHOOK_URL==="SÆT_DIN_WEBHOOK_ADRESSE_IND_HER"){ showError("Webhook-adressen mangler i filen."); return; }
+  showBlock("sending");
+
+  const fname = "slutrapport_"+currentDriver.id+"_"+Date.now()+".jpg";
+  const form = new FormData();
+  form.append("driver",    currentDriver.navn);
+  form.append("driver_id", currentDriver.id);
+  form.append("driver_nr", currentDriver.nr);
+  form.append("filename",  fname);
+  form.append("timestamp", new Date().toISOString());
+  form.append("file", currentBlob, fname);
+
+  try{
+    const resp = await fetch(MAKE_WEBHOOK_URL, {
+      method:"POST",
+      body: form
+    });
+    if(!resp.ok) throw new Error("HTTP " + resp.status);
+    let vagt = "";
+    const text = (await resp.text()).trim();
+    if(text){
+      try{ const j = JSON.parse(text); vagt = j.vagt || j.slutrapport || j.slutrapport_nr || ""; }
+      catch(e){ if(text.length < 40) vagt = text; }
+    }
+    showSuccess(vagt);
+  }catch(err){
+    showError("Tjek internet og prøv igen. (" + err.message + ")");
+  }
+}
+
+function showBlock(which){
+  ["captureCard","sendingBlock","okBlock","errBlock"].forEach(id => $(id).classList.add("hidden"));
+  if(which==="capture") $("captureCard").classList.remove("hidden");
+  if(which==="sending") $("sendingBlock").classList.remove("hidden");
+}
+
+function showSuccess(vagt){
+  showBlock("none"); $("okBlock").classList.remove("hidden");
+  $("vagtLine").innerHTML = vagt ? '<div class="vagt">Vagt '+vagt+'</div>' : "";
+}
+
+function showError(msg){ showBlock("none"); $("errBlock").classList.remove("hidden"); $("errMsg").textContent = msg; }
+
+function clearInputs(){ $("cameraInput").value=""; $("galleryInput").value=""; }
+
+function resetToCapture(){
+  currentBlob = null; clearInputs();
+  $("previewArea").classList.add("hidden"); $("captureArea").classList.remove("hidden"); showBlock("capture");
+}
+
+$("captureBtn").addEventListener("click", () => $("cameraInput").click());
+$("attachBtn").addEventListener("click", () => $("galleryInput").click());
+$("retakeBtn").addEventListener("click", () => { currentBlob=null; clearInputs(); $("previewArea").classList.add("hidden"); $("captureArea").classList.remove("hidden"); });
+$("cameraInput").addEventListener("change", e => { if(e.target.files[0]) processFile(e.target.files[0]); });
+$("galleryInput").addEventListener("change", e => { if(e.target.files[0]) processFile(e.target.files[0]); });
+$("sendBtn").addEventListener("click", send);
+$("nextBtn").addEventListener("click", resetToCapture);
+$("tryAgainBtn").addEventListener("click", () => { if(currentBlob) send(); else resetToCapture(); });
+
+if(!MAKE_WEBHOOK_URL || MAKE_WEBHOOK_URL==="SÆT_DIN_WEBHOOK_ADRESSE_IND_HER") $("configNotice").classList.remove("hidden");
+initDriver();
+</script>
+</body>
+</html>

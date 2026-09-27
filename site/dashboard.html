@@ -1,0 +1,697 @@
+<!DOCTYPE html>
+<html lang="da">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Taxi Afregning">
+<meta name="theme-color" content="#14181F">
+<title>Taxi afregning</title>
+<style>
+  :root{--ink:#14181F;--bg:#F4F5F7;--card:#fff;--amber:#F5B301;--green:#1E7F53;
+    --green-bg:#E4F3EA;--red:#C4342F;--red-bg:#FBEAE9;--muted:#5B6270;--line:#E6E8EC;}
+  *{box-sizing:border-box}
+  body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;
+    background:var(--bg);color:var(--ink);line-height:1.5}
+  header{background:var(--ink);color:#fff;padding:calc(18px + env(safe-area-inset-top)) 20px 18px;border-bottom:4px solid var(--amber)}
+  header h1{margin:0;font-size:20px}
+  main{max-width:1200px;margin:0 auto;padding:20px;padding-bottom:calc(20px + env(safe-area-inset-bottom))}
+  .row{display:flex;gap:12px;flex-wrap:wrap;margin-bottom:18px}
+  .field{flex:1;min-width:130px}
+  label{display:block;font-size:13px;color:var(--muted);margin-bottom:4px;font-weight:600}
+  select{width:100%;font-size:17px;padding:12px;border-radius:12px;border:1px solid var(--line);background:#fff}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:20px;margin-bottom:18px}
+  .card h2{margin:0 0 12px;font-size:16px}
+  .line{display:flex;justify-content:space-between;padding:9px 0;border-bottom:1px solid #F0F1F4;font-size:16px}
+  .line:last-child{border-bottom:none}
+  .line .lbl{color:var(--ink)}
+  .line .val{font-weight:600;font-variant-numeric:tabular-nums}
+  .sub .lbl{color:var(--muted);padding-left:14px;font-size:15px}
+  .sub .val{font-weight:500;color:var(--muted)}
+  .model .val{font-weight:500;font-size:14px;color:var(--muted);text-align:right;max-width:60%}
+  .payout{background:var(--green-bg);margin:12px -20px -20px;padding:16px 20px;border-radius:0 0 16px 16px;
+    display:flex;justify-content:space-between;align-items:center}
+  .payout .lbl{font-weight:700;color:var(--green)}
+  .payout .val{font-weight:800;font-size:22px;color:var(--green);font-variant-numeric:tabular-nums}
+  table{width:100%;border-collapse:collapse;font-size:15px}
+  th{text-align:left;color:var(--muted);font-weight:600;padding:6px 8px;border-bottom:2px solid var(--line);white-space:nowrap}
+  td{padding:8px;border-bottom:1px solid #F0F1F4;font-variant-numeric:tabular-nums;white-space:nowrap}
+  tr.dup td{background:var(--red-bg);color:var(--red)}
+  .flag{font-size:12px;color:var(--red);font-weight:700}
+  td.nr-afvig{background:#FFF6D9 !important;color:#6B5600 !important;font-weight:700;cursor:help}
+  .nrow{display:flex;align-items:center;padding:9px 0;border-bottom:1px solid #F0F1F4;font-size:16px}
+  .nrow .num{width:24px;color:var(--muted);font-size:13px;flex:none}
+  .nrow .nlbl{flex:1}
+  .nrow .nval{font-weight:600;font-variant-numeric:tabular-nums;text-align:right;white-space:nowrap}
+  .nrow.sub .nlbl{color:var(--muted);font-size:14px;padding-left:6px}
+  .nrow.sub .nval{font-weight:500;color:var(--muted)}
+  .empty{color:var(--muted);text-align:center;padding:24px}
+  .note{font-size:12px;color:var(--muted);margin-top:8px}
+  .cfg{background:#FFF6D9;border:1px solid #F0D98A;color:#6B5600;border-radius:12px;padding:14px;font-size:14px;margin-bottom:18px}
+  .hidden{display:none !important}
+  .thumb{width:44px;height:44px;object-fit:cover;border-radius:8px;border:1px solid var(--line);cursor:zoom-in;display:block}
+  .billede-mangler{color:var(--muted);font-size:12px}
+  .billede-link{font-size:12px;cursor:zoom-in}
+  .ret-billede-wrap{display:flex;flex-direction:column;gap:4px}
+  .ret-billede-wrap .hint{font-size:11px;color:var(--muted)}
+  .ret-billede{max-width:360px;max-height:360px;border-radius:10px;border:1px solid var(--line);cursor:zoom-in;object-fit:contain;background:#F0F1F4;display:block}
+  .ret-billede-empty{width:180px;height:120px;border-radius:10px;border:1px dashed var(--line);display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:13px;background:#F9FAFB}
+  /* Sidepanel (ikke fuldskærm), så Ret-felterne kan bruges mens billedet er åbent. Under 900px: fuld skærm */
+  #lightbox{position:fixed;top:0;right:0;bottom:0;width:min(50vw,640px);background:#14181F;z-index:1000;display:flex;flex-direction:column;box-shadow:-8px 0 30px rgba(0,0,0,.25)}
+  #lightbox .lb-bar{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px 10px;padding:10px 14px;color:#fff;font-size:13px;border-bottom:1px solid #2A303B}
+  #lightbox .lb-tools{display:flex;align-items:center;flex-wrap:wrap;gap:6px}
+  #lightbox .lb-bar a{color:#A7ADBA;font-size:12px}
+  #lightbox .lb-bar button{background:transparent;border:1px solid #3A414D;color:#fff;border-radius:8px;padding:4px 10px;cursor:pointer;font-size:13px;min-width:32px}
+  #lightbox .lb-zoom{color:#A7ADBA;font-size:12px;min-width:40px;text-align:center;font-variant-numeric:tabular-nums}
+  /* Billedflade: egen zoom/pan/rotation (touch-action:none, så knib og træk ikke scroller siden) */
+  #lightbox .lb-body{flex:1;position:relative;overflow:hidden;touch-action:none;user-select:none;-webkit-user-select:none;cursor:zoom-in}
+  #lightbox .lb-body.kan-panorere{cursor:grab}
+  #lightbox .lb-body.panorerer{cursor:grabbing}
+  #lightbox .lb-body img{position:absolute;left:50%;top:50%;max-width:none;max-height:none;border-radius:6px;transform-origin:50% 50%;will-change:transform;pointer-events:none;-webkit-user-drag:none}
+  #lightbox .lb-hint{color:#6B7280;font-size:11px;text-align:center;padding:6px 10px}
+  #lightbox .lb-hint-touch{display:none}
+  @media (hover:none), (pointer:coarse){ #lightbox .lb-hint-mus{display:none} #lightbox .lb-hint-touch{display:inline} }
+  @media (min-width:900px){ body.lb-open main{margin-right:min(50vw,640px)} }
+  @media (max-width:899px){
+    #lightbox{width:100%}
+    body.lb-open{overflow:hidden}
+    #lightbox .lb-bar button{padding:8px 12px;font-size:15px}
+  }
+</style>
+</head>
+<body>
+<header><p style="margin:0;font-size:12px;color:#A7ADBA;text-transform:uppercase">Taxi & Flex 22 ApS</p><h1>🚕 Taxi afregning</h1></header>
+<main>
+  <div id="cfg" class="cfg" style="display:none">
+    Indsæt din <b>anon</b>-nøgle øverst i filen (linjen <code>SUPABASE_ANON_KEY</code>).
+    Du finder den i Supabase → Project Settings → API → "anon public".
+  </div>
+
+  <div class="row">
+    <div class="field">
+      <label>Chauffør</label>
+      <select id="driver"></select>
+    </div>
+    <div class="field">
+      <label>Regnskabsmåned (28.–27.)</label>
+      <select id="month"></select>
+    </div>
+  </div>
+
+  <div class="card" id="lonseddelCard">
+    <div style="display:flex;justify-content:space-between;align-items:center">
+      <h2 id="lonTitle">Lønseddel</h2>
+      <button id="copyBtn" onclick="copyLon()" style="border:1px solid var(--line);background:#fff;border-radius:10px;padding:8px 12px;font-size:13px;cursor:pointer">Kopiér som tekst</button>
+    </div>
+    <div id="lonBody"><div class="empty">Vælg chauffør og måned…</div></div>
+  </div>
+
+  <div class="card">
+    <h2>Alle chauffører (valgt måned)</h2>
+    <div id="overblik"><div class="empty">—</div></div>
+  </div>
+
+  <div class="card" id="fejlCard" style="display:none">
+    <h2 style="color:var(--red)">⚠️ Fejlede uploads</h2>
+    <div id="fejlListe"></div>
+  </div>
+
+  <div class="card">
+    <h2>Slutrapporter (til dobbelt-tjek)</h2>
+    <div id="rapporter"><div class="empty">—</div></div>
+    <div class="note">Røde rækker = mistænkt dublet (samme dato og beløb). Ret/slet i Supabase hvis det er en dublet.
+      Gult ⚠ nummer = passer ikke med nogen bils nummerrække (alle chaufførers vagter tæller med, da bilerne deles) — fx OCR-forveksling af 18/19. Hold musen over for forslag, ret via Ret.</div>
+  </div>
+  <p style="text-align:center;font-size:11px;color:#B7BCC6;margin:14px 0 0">dashboard v2026-09-28</p>
+</main>
+
+<div id="lightbox" class="hidden" role="dialog" aria-label="Billede af slutrapport">
+  <div class="lb-bar">
+    <span id="lightboxTitel">Slutrapport</span>
+    <span class="lb-tools">
+      <button type="button" onclick="lbZoomKnap(1/1.5)" aria-label="Zoom ud" title="Zoom ud">−</button>
+      <span id="lbZoom" class="lb-zoom">100%</span>
+      <button type="button" onclick="lbZoomKnap(1.5)" aria-label="Zoom ind" title="Zoom ind">+</button>
+      <button type="button" onclick="lbNulstil()">Nulstil</button>
+      <button type="button" onclick="lbRoter()" title="Roterer kun visningen – billedet i Storage ændres ikke">Rotér 90°</button>
+      <a id="lightboxAaben" href="#" target="_blank" rel="noopener">Åbn i ny fane</a>
+      <button type="button" onclick="closeLightbox()">Luk ✕</button>
+    </span>
+  </div>
+  <div class="lb-body" id="lbStage"><img id="lightboxImg" alt="Slutrapport-billede" draggable="false"></div>
+  <div class="lb-hint"><span class="lb-hint-mus">Musehjul for zoom · træk for at flytte · dobbeltklik zoomer ind og ud</span><span class="lb-hint-touch">Knib for zoom · træk for at flytte · dobbelttryk zoomer ind og ud</span></div>
+</div>
+
+<script>
+/* ===================== OPSÆTNING — ret KUN denne ene linje ===================== */
+const SUPABASE_URL = "https://vehgabygvxnkrqsoazfs.supabase.co";
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZlaGdhYnlndnhua3Jxc29hemZzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODc5MzkzNjcsImV4cCI6MjEwMzUxNTM2N30.bJUEk5lH97cpoydPNsxSCx5niu96Wi022_ls1nmeFyw";   // anon public
+const OWNER_TOKEN_DEFAULT = "d159855a2b247ad35fc85d826e84eeb2";   // din ejer-kode (bruges hvis intet ?k= i linket)
+const OWNER_TOKEN = new URLSearchParams(location.search).get("k") || OWNER_TOKEN_DEFAULT;
+const FIRM = "Taxi & Flex 22 ApS";
+/* ================================================================================ */
+
+const DRIVERS = ["Fuad","Faysal","Abdikarin","Qaalid","Adan"];
+const $ = id => document.getElementById(id);
+const kr = n => (n===null||n===undefined||n==="") ? "–"
+  : Number(n).toLocaleString("da-DK",{minimumFractionDigits:2,maximumFractionDigits:2});
+const escAttr = s => String(s).replace(/&/g,"&amp;").replace(/"/g,"&quot;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+
+async function rpc(fn,args){
+  const r = await fetch(`${SUPABASE_URL}/rest/v1/rpc/${fn}`, {
+    method:"POST",
+    headers:{ apikey:SUPABASE_ANON_KEY, Authorization:`Bearer ${SUPABASE_ANON_KEY}`, "Content-Type":"application/json" },
+    body: JSON.stringify(args)
+  });
+  if(!r.ok) throw new Error("HTTP "+r.status);
+  const txt = await r.text();          // nogle funktioner (fx saet_bekraeftet) svarer tomt
+  return txt ? JSON.parse(txt) : null; // tomt svar = intet at læse, ikke en fejl
+}
+
+let ALLE=[];  // lønsedler for den VALGTE måned (cache til lønseddel, overblik og kopiér)
+
+/* Robust henter: den nye hent_alle vil have p_maaned; den gamle vil ikke.
+   Vi prøver med måned først, og falder tilbage til uden + filtrerer selv,
+   så lønsedlen virker uanset hvilken version af hent_alle der ligger i databasen. */
+async function hentLonsedler(m){
+  let rows = null;
+  try{ rows = await rpc("hent_alle", {p_token:OWNER_TOKEN, p_maaned:m}); }
+  catch(e){ rows = null; }
+  if(!rows || rows.length===0){
+    try{
+      const alle = await rpc("hent_alle", {p_token:OWNER_TOKEN});
+      rows = (alle||[]).filter(r=>r.regnskabsmaaned===m);
+    }catch(e){ if(!rows) rows = []; }
+  }
+  return rows || [];
+}
+
+function fillDrivers(){
+  $("driver").innerHTML = DRIVERS.map(d=>`<option>${d}</option>`).join("");
+}
+async function fillMonths(){
+  let months = [];
+  try{
+    const rows = await rpc("hent_alle", {p_token:OWNER_TOKEN});
+    months = [...new Set((rows||[]).map(r=>r.regnskabsmaaned))].filter(Boolean).sort().reverse();
+  }catch(e){}
+  if(months.length===0){ // fallback: seneste 12 måneder
+    const now=new Date();
+    for(let i=0;i<12;i++){const d=new Date(now.getFullYear(),now.getMonth()-i,1);
+      months.push(d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0"));}
+  }
+  $("month").innerHTML = months.map(m=>`<option>${m}</option>`).join("");
+}
+
+function renderLon(row){
+  $("lonTitle").textContent = "Lønseddel – " + $("driver").value;
+  if(!row){ $("lonBody").innerHTML = `<div class="empty">Ingen ture i denne måned.</div>`; return; }
+  $("lonBody").innerHTML = buildLon(row, false);
+}
+const line=(l,v)=>`<div class="line"><span class="lbl">${l}</span><span class="val">${v}</span></div>`;
+const sub =(l,v)=>`<div class="line sub"><span class="lbl">${l}</span><span class="val">${v}</span></div>`;
+function money(v){ return (v===null||v===undefined||v==="") ? "–" : kr(v)+" kr."; }
+function nrow(nr,label,value,vstyle){
+  return `<div class="nrow"><span class="num">${nr}.</span><span class="nlbl">${label}</span><span class="nval" style="${vstyle||''}">${value}</span></div>`;
+}
+function subrow(label,value){
+  return `<div class="nrow sub"><span class="num"></span><span class="nlbl">${label}</span><span class="nval">${value}</span></div>`;
+}
+function buildLon(row, mine){
+  if(!row) return `<div class="empty">Ingen ture i denne periode.</div>`;
+  const dcol = Number(row.afregn_difference||0)!==0 ? "color:#C4342F;font-weight:700" : "";
+  let h="";
+  h+=nrow(1,"Antal ture", row.antal_ture);
+  h+=nrow(2,"Indkørt i alt", money(row.indkort_i_alt));
+  if(row.overfort_i_alt!=null) h+=nrow(3,"Overført i alt", money(row.overfort_i_alt));
+  if(row.afregn_difference!=null) h+=nrow(4,"Difference", money(row.afregn_difference), dcol);
+  h+=nrow(5,"Kontant i alt", money(row.kontant_i_alt));
+  h+=nrow(6,"Bro / Færge", money(row.bro_faerge_i_alt));
+  h+=nrow(7,"Model", row.model||"");
+  h+=nrow(8,"Bruttoandel", money(row.andel_brutto));
+  if(row.andel_op_til_graensen!=null) h+=subrow("Andel op til grænsen", money(row.andel_op_til_graensen));
+  if(row.andel_over_graensen!=null)   h+=subrow("Andel over grænsen", money(row.andel_over_graensen));
+  if(row.heraf_chauffor_halvdel!=null)h+=subrow(mine?"Heraf dig (halvdel)":"Heraf chauffør (halvdel)", money(row.heraf_chauffor_halvdel));
+  if(row.heraf_kone_halvdel!=null)    h+=subrow("Heraf kone (halvdel)", money(row.heraf_kone_halvdel));
+  if(row.kontant_pr_person!=null)     h+=subrow("Kontant pr. person (halvdel)", money(row.kontant_pr_person));
+  h+=`<div class="payout"><span class="lbl">TIL UDBETALING</span><span class="val">${money(row.til_udbetaling)}</span></div>`;
+  return h;
+}
+
+/* OCR forveksler ofte "18" og "19" i slutrapport-nummeret. Nummeret tæller pr. BIL (taxameter), ikke pr.
+   chauffør, og bilerne deles. Derfor sammenlignes med ALLE chaufførers vagter i måneden: et nummer er
+   troværdigt, hvis en anden vagt inden for NR_DAGE dage har et nummer tæt på (højst NR_AFVIG fra), og
+   rækkefølgen passer med at taxameteret kun tæller op (senere vagt = højere nummer; ±1 dag tolereres).
+   Så giver bilskift, lån af en anden bil og delte biler ingen alarm. Kan en 18<->19-ombytning gøre
+   nummeret troværdigt, vises den som forslag. */
+const NR_AFVIG = 50;
+const NR_DAGE = 10;   // hvor mange dage frem/tilbage der ledes efter vagter i samme bil
+const NR_NABOER = 3;  // chaufførens egne vagter på hver side, brugt til "forventet ca."
+function nrAdvarsler(rows, alle){
+  const tal = s => { const t = String(s ?? "").trim(); return /^\d+$/.test(t) ? Number(t) : null; };
+  const dag = d => { const t = Date.parse(String(d||"") + "T00:00:00Z"); return isNaN(t) ? null : t / 864e5; };
+  const lav = r => ({ id:r.id, txt:String(r.slutrapport_nr).trim(), nr:tal(r.slutrapport_nr), d:dag(r.dato),
+                      dato:r.dato||"", vs:r.vagt_start||"" });
+  const gyldig = r => r && r.id && tal(r.slutrapport_nr)!==null && dag(r.dato)!==null;
+  const pulje = [...new Map([...(alle||[]), ...rows].filter(gyldig).map(r=>[r.id, lav(r)])).values()];
+  // Understøtter vagt c nummeret n på dag d? (samme bil = tæt nummer, og tælleren går kun op)
+  const passer = (n, d, c) => Math.abs(c.d - d) <= NR_DAGE && Math.abs(c.nr - n) <= NR_AFVIG
+    && (Math.abs(c.d - d) <= 1 || Math.sign(c.nr - n) === Math.sign(c.d - d) || c.nr === n);
+  const seq = rows.filter(gyldig).map(lav).sort((a,b)=> a.dato.localeCompare(b.dato) || a.vs.localeCompare(b.vs));
+  const ud = {};
+  seq.forEach((s,i)=>{
+    const andre = pulje.filter(c=>c.id!==s.id);
+    if(!andre.length || andre.some(c=>passer(s.nr, s.d, c))) return;
+    const forslag = [];
+    for(const [a,b] of [["18","19"],["19","18"]]){
+      let p = s.txt.indexOf(a);
+      while(p >= 0){
+        const k = s.txt.slice(0,p) + b + s.txt.slice(p+2);
+        if(andre.some(c=>passer(Number(k), s.d, c))) forslag.push(k);
+        p = s.txt.indexOf(a, p+1);
+      }
+    }
+    const egne = [...seq.slice(Math.max(0, i-NR_NABOER), i), ...seq.slice(i+1, i+1+NR_NABOER)];
+    const v = egne.map(n=>n.nr).sort((a,b)=>a-b), m = v.length >> 1;
+    const median = v.length ? (v.length % 2 ? v[m] : (v[m-1] + v[m]) / 2) : null;
+    const naermeste = [seq[i-1], seq[i+1]].filter(Boolean).map(n=>n.txt).join(", ");
+    ud[s.id] = `Nummeret passer ikke med nogen bils nummerrække (ingen vagt ±${NR_DAGE} dage med nummer i nærheden`
+             + (naermeste ? `; nabo-vagter: ${naermeste}` : "") + (median!==null ? `; forventet ca. ${Math.round(median)}` : "") + ").";
+    ud[s.id] += forslag.length ? ` Måske ${[...new Set(forslag)].join(" eller ")}? (OCR forveksler 18/19)` : " Tjek billedet (eller om vagten er kørt i en anden bil).";
+  });
+  return ud;
+}
+
+function renderRapporter(rows, alle){
+  if(!rows||rows.length===0){ $("rapporter").innerHTML=`<div class="empty">Ingen ture.</div>`; return; }
+  const nrAdv = nrAdvarsler(rows, alle || rows);   // alle = alle chaufførers vagter (bilerne deles)
+  // markér mistænkte dubletter (samme dato + indkørt)
+  const key=r=>r.dato+"|"+r.indkort;
+  const count={}; rows.forEach(r=>count[key(r)]=(count[key(r)]||0)+1);
+  const body = rows.map(r=>{
+    const dup = count[key(r)]>1;
+    const ind = Number(r.indkort||0), ovf = Number(r.overfort||0), kon = Number(r.kontant||0);
+    const d = ind - ovf;
+    const dStyle = d !== 0 ? ' style="color:var(--red);font-weight:700"' : '';
+    const kStyle = kon > 0 ? ' style="color:var(--green);font-weight:700"' : '';
+    const rid = r.id || "";
+    // Pladsholdere: udskiftes af visBilleder() når et billede faktisk findes (ellers står "–" / "Intet billede")
+    const billede = `<span class="billede-mangler" data-billede-rid="${rid}" data-billede-type="link">–</span>`;
+    const retBillede = `<div class="ret-billede-wrap" data-billede-rid="${rid}" data-billede-type="ret"><div class="ret-billede-empty">Intet billede</div></div>`;
+    const checked = r.bekraeftet ? "checked" : "";
+    return `<tr class="${dup?'dup':''}" id="row-${rid}">
+      <td>${r.dato||""}</td>${nrAdv[rid]
+        ? `<td class="nr-afvig" title="${escAttr(nrAdv[rid])}">⚠ ${r.slutrapport_nr||""}</td>`
+        : `<td>${r.slutrapport_nr||""}</td>`}
+      <td style="text-align:right">${kr(ind)}</td>
+      <td style="text-align:right">${kr(ovf)}</td>
+      <td style="text-align:right"${dStyle}>${kr(d)}</td>
+      <td style="text-align:right"${kStyle}>${kr(kon)}</td>
+      <td>${(r.vagt_start||"")}–${(r.vagt_slut||"")}</td>
+      <td style="text-align:center">${billede}</td>
+      <td style="text-align:center"><input type="checkbox" ${checked} onchange="toggleBekraeft('${rid}', this.checked)" title="Bekræftet / lukket"></td>
+      <td><button onclick="aabnRet('${rid}','${r.dato||""}',${ind},${ovf},${kon})" style="border:1px solid var(--line);background:#fff;border-radius:8px;padding:4px 10px;font-size:12px;cursor:pointer">Ret</button></td>
+      <td>${dup?'<span class="flag">dublet?</span>':''}</td></tr>
+      <tr id="ret-${rid}" class="hidden"><td colspan="10" style="background:#F9FAFB;padding:12px;border-radius:0 0 10px 10px">
+        <div style="display:flex;gap:16px;flex-wrap:wrap;align-items:flex-start">
+          ${retBillede}
+          <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:end">
+            <div><label style="font-size:12px;color:var(--muted);display:block">Slutrapport nr</label>
+              <input type="text" inputmode="numeric" id="ret-nr-${rid}" value="${escAttr(r.slutrapport_nr||"")}" data-orig="${escAttr(r.slutrapport_nr||"")}" style="width:110px;padding:6px;border:1px solid var(--line);border-radius:6px"></div>
+            <div><label style="font-size:12px;color:var(--muted);display:block">Dato</label>
+              <input type="date" id="ret-dato-${rid}" value="${r.dato||""}" style="padding:6px;border:1px solid var(--line);border-radius:6px"></div>
+            <div><label style="font-size:12px;color:var(--muted);display:block">Indkørt</label>
+              <input type="number" step="0.01" id="ret-ind-${rid}" value="${ind}" style="width:100px;padding:6px;border:1px solid var(--line);border-radius:6px"></div>
+            <div><label style="font-size:12px;color:var(--muted);display:block">Overført</label>
+              <input type="number" step="0.01" id="ret-ovf-${rid}" value="${ovf}" style="width:100px;padding:6px;border:1px solid var(--line);border-radius:6px"></div>
+            <div><label style="font-size:12px;color:var(--muted);display:block">Kontant</label>
+              <input type="number" step="0.01" id="ret-kon-${rid}" value="${kon}" style="width:100px;padding:6px;border:1px solid var(--line);border-radius:6px"></div>
+            <button onclick="gemRet('${rid}')" style="background:var(--green);color:#fff;border:none;border-radius:8px;padding:8px 14px;cursor:pointer;font-weight:700">Gem</button>
+            <button onclick="lukRet('${rid}')" style="background:transparent;border:1px solid var(--line);border-radius:8px;padding:8px 14px;cursor:pointer">Annullér</button>
+          </div>
+        </div>
+      </td></tr>`;
+  }).join("");
+  $("rapporter").innerHTML = `<div style="overflow-x:auto"><table>
+    <tr><th>Dato</th><th>Slutrap.</th><th style="text-align:right">Indkørt</th>
+        <th style="text-align:right">Overført</th><th style="text-align:right">Diff</th>
+        <th style="text-align:right">Kontant</th><th>Vagt</th><th>Billede</th><th>Bekræftet</th><th></th><th></th></tr>${body}</table></div>`;
+  visBilleder(rows);
+}
+
+/* ===== Billeder: Storage-filnavn = {slutrapport_nr}_{chauffor}.jpg i den offentlige bucket ===== */
+const BILLED_BASE = `${SUPABASE_URL}/storage/v1/object/public/fejlede-billeder/`;
+// Offentlig URL til en fil i en bestemt bucket ("slutrapport-billeder" eller "fejlede-billeder")
+const billedUrl = (bucket, navn) =>
+  `${SUPABASE_URL}/storage/v1/object/public/${encodeURIComponent(bucket || "fejlede-billeder")}/${encodeURIComponent(navn)}`;
+
+// billede_url bruges først hvis udfyldt; ellers bygges linket selv. Storage er case-sensitiv,
+// så navnet prøves som gemt (trimmet), med samlede mellemrum, og med små bogstaver.
+function billedKandidater(r){
+  const urls = [];
+  if(r.billede_url) urls.push(String(r.billede_url).trim());
+  const nr = String(r.slutrapport_nr ?? "").trim();
+  const navn = String(r.chauffor ?? "").trim();
+  if(nr && navn){
+    for(const v of [navn, navn.replace(/\s+/g," "), navn.toLowerCase()]){
+      urls.push(BILLED_BASE + encodeURIComponent(`${nr}_${v}.jpg`));
+    }
+  }
+  return [...new Set(urls.filter(Boolean))];
+}
+
+// Kun fundne billeder caches — et billede der mangler nu, kan være uploadet ved næste visning.
+const BILLED_CACHE = new Map();
+function billedFindes(url){
+  if(!BILLED_CACHE.has(url)){
+    const p = new Promise(res=>{
+      const img = new Image();
+      img.onload = ()=>res(true);
+      img.onerror = ()=>res(false);
+      img.src = url;
+    }).then(ok=>{ if(!ok) BILLED_CACHE.delete(url); return ok; });
+    BILLED_CACHE.set(url, p);
+  }
+  return BILLED_CACHE.get(url);
+}
+async function findBillede(kandidater){
+  for(const u of kandidater){ if(await billedFindes(u)) return u; }
+  return null;
+}
+
+/* Filnavne i buckets: {nr}_{driver_id}_{tidsstempel}.jpg (nyt) eller {nr}__{tidsstempel}.jpg
+   (gamle filer uden fører). Det faktiske filnavn og bucket slås op via den ejer-token-beskyttede RPC,
+   som leder i både "slutrapport-billeder" og "fejlede-billeder". */
+const BILLED_URL_MAP = new Map(); // slutrapport_nr -> fuld public URL
+// RPC'en vælger selv den rigtige fil pr. nummer: chaufførens egen ({nr}_{driver_id}_) før gamle
+// filer uden fører ({nr}__), nyeste først. Numre er ikke unikke på tværs af biler, så chaufføren skal med.
+async function hentBilledNavne(numre, chauffor){
+  BILLED_URL_MAP.clear();
+  const liste = [...new Set((numre||[]).map(n=>String(n ?? "").trim()).filter(Boolean))];
+  if(!liste.length) return;
+  let rows;
+  try{ rows = await rpc("hent_billeder", {p_token:OWNER_TOKEN, p_numre:liste, p_chauffor:chauffor}); }
+  catch(e){ return; } // RPC ikke opdateret endnu -> fald tilbage til navne-gæt nedenfor
+  (rows||[]).forEach(row=>{
+    const navn = row && row.navn; if(!navn) return;
+    const nr = String(row.slutrapport_nr ?? String(navn).split("_")[0]).trim();
+    if(nr && !BILLED_URL_MAP.has(nr)) BILLED_URL_MAP.set(nr, billedUrl(row.bucket, navn));
+  });
+}
+
+function visBilleder(rows){
+  rows.forEach(r=>{
+    if(!r.id) return;
+    // 1) udfyldt billede_url  2) faktisk filnavn fra RPC (suffix-agnostisk)  3) navne-gæt
+    const forud = r.billede_url ? String(r.billede_url).trim()
+                : (BILLED_URL_MAP.get(String(r.slutrapport_nr ?? "").trim()) || null);
+    const p = forud ? Promise.resolve(forud) : findBillede(billedKandidater(r));
+    p.then(url=>{
+      if(!url) return;
+      const titel = `${r.chauffor||""} · slutrapport ${r.slutrapport_nr||""} · ${r.dato||""}`;
+      document.querySelectorAll(`[data-billede-rid="${r.id}"]`).forEach(el=>{
+        if(el.dataset.billedeType==="ret"){
+          const img = document.createElement("img");
+          img.className = "ret-billede"; img.src = url; img.alt = "Billede af slutrapport";
+          img.title = "Klik for at forstørre"; img.dataset.lightbox = url; img.dataset.titel = titel;
+          const hint = document.createElement("span");
+          hint.className = "hint"; hint.textContent = "Klik for at forstørre";
+          el.replaceChildren(img, hint);
+        }else{
+          const a = document.createElement("a");
+          a.className = "billede-link"; a.href = url; a.textContent = "📷 Se";
+          a.dataset.lightbox = url; a.dataset.titel = titel;
+          el.replaceWith(a);
+        }
+      });
+    });
+  });
+}
+
+/* ===== Billedviser: zoom (hjul, knib, dobbeltklik/-tryk, knapper), træk/pan og rotation.
+   Alt sker i visningen med CSS-transform — originalen i Storage ændres aldrig. ===== */
+const LB_MAX = 8;                 // største zoom (8 = 800 %)
+const LB = { s:1, tx:0, ty:0, rot:0, fit:1, pts:new Map(), pinch:null, multi:false, tap:null, sidsteType:"mouse" };
+const lbStage = () => $("lbStage");
+
+// Billedets størrelse på skærmen ved zoom 1 (efter rotation)
+function lbMaal(){
+  const img = $("lightboxImg"), drej = LB.rot % 180 !== 0;
+  const nw = img.naturalWidth || 1, nh = img.naturalHeight || 1;
+  return { w:(drej ? nh : nw) * LB.fit, h:(drej ? nw : nh) * LB.fit };
+}
+// Tilpas billedet til fladen (også efter rotation og ændret vinduesstørrelse)
+function lbTilpas(){
+  const img = $("lightboxImg"), st = lbStage();
+  if(!img.naturalWidth || !st.clientWidth) return;
+  const drej = LB.rot % 180 !== 0;
+  const bw = drej ? img.naturalHeight : img.naturalWidth, bh = drej ? img.naturalWidth : img.naturalHeight;
+  LB.fit = Math.min(st.clientWidth / bw, st.clientHeight / bh);
+  img.style.width = img.naturalWidth * LB.fit + "px";
+  img.style.height = img.naturalHeight * LB.fit + "px";
+  lbKlem(); lbTegn();
+}
+// Hold zoom inden for 1–LB_MAX, og billedet inden for fladen
+function lbKlem(){
+  LB.s = Math.min(LB_MAX, Math.max(1, LB.s));
+  const st = lbStage(), m = lbMaal();
+  const mx = Math.max(0, (m.w * LB.s - st.clientWidth) / 2), my = Math.max(0, (m.h * LB.s - st.clientHeight) / 2);
+  LB.tx = Math.min(mx, Math.max(-mx, LB.tx));
+  LB.ty = Math.min(my, Math.max(-my, LB.ty));
+}
+function lbTegn(){
+  $("lightboxImg").style.transform = `translate(-50%,-50%) translate(${LB.tx}px,${LB.ty}px) scale(${LB.s}) rotate(${LB.rot}deg)`;
+  $("lbZoom").textContent = Math.round(LB.s * 100) + "%";
+  lbStage().classList.toggle("kan-panorere", LB.s > 1.001);
+}
+// Zoom så punktet (cx,cy) i vinduet bliver stående under fingeren/musen
+function lbZoomVed(cx, cy, nyS){
+  const r = lbStage().getBoundingClientRect();
+  const px = cx - (r.left + r.width / 2), py = cy - (r.top + r.height / 2);
+  nyS = Math.min(LB_MAX, Math.max(1, nyS));
+  const k = nyS / LB.s;
+  LB.tx = px - (px - LB.tx) * k;
+  LB.ty = py - (py - LB.ty) * k;
+  LB.s = nyS;
+  lbKlem(); lbTegn();
+}
+function lbZoomKnap(faktor){
+  const r = lbStage().getBoundingClientRect();
+  lbZoomVed(r.left + r.width / 2, r.top + r.height / 2, LB.s * faktor);
+}
+function lbNulstil(){ LB.s = 1; LB.tx = 0; LB.ty = 0; lbTegn(); }
+function lbRoter(){ LB.rot = (LB.rot + 90) % 360; LB.s = 1; LB.tx = 0; LB.ty = 0; lbTilpas(); }
+function lbDobbelt(cx, cy){ if(LB.s > 1.05) lbNulstil(); else lbZoomVed(cx, cy, 2.5); }
+
+(function lbHaendelser(){
+  const st = lbStage();
+  st.addEventListener("wheel", e=>{
+    e.preventDefault();
+    lbZoomVed(e.clientX, e.clientY, LB.s * Math.exp(-e.deltaY * 0.0015));
+  }, {passive:false});
+  // Mus: dblclick. Touch/pen: eget dobbelttryk nedenfor (så et dobbelttryk ikke tæller to gange)
+  st.addEventListener("dblclick", e=>{ e.preventDefault(); if(LB.sidsteType === "mouse") lbDobbelt(e.clientX, e.clientY); });
+  st.addEventListener("pointerdown", e=>{
+    LB.sidsteType = e.pointerType || "mouse";
+    try{ st.setPointerCapture(e.pointerId); }catch(_){}
+    LB.pts.set(e.pointerId, { x:e.clientX, y:e.clientY, sx:e.clientX, sy:e.clientY, t:Date.now() });
+    if(LB.pts.size >= 2){
+      LB.multi = true;
+      const [a, b] = [...LB.pts.values()];
+      LB.pinch = { d:Math.hypot(a.x - b.x, a.y - b.y), mx:(a.x + b.x) / 2, my:(a.y + b.y) / 2 };
+    }
+  });
+  st.addEventListener("pointermove", e=>{
+    const p = LB.pts.get(e.pointerId); if(!p) return;
+    const fx = p.x, fy = p.y; p.x = e.clientX; p.y = e.clientY;
+    if(LB.pts.size >= 2 && LB.pinch){                 // knib: zoom om midtpunktet + flyt med
+      const [a, b] = [...LB.pts.values()];
+      const d = Math.hypot(a.x - b.x, a.y - b.y), mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
+      LB.tx += mx - LB.pinch.mx; LB.ty += my - LB.pinch.my;
+      if(LB.pinch.d > 0) lbZoomVed(mx, my, LB.s * d / LB.pinch.d); else { lbKlem(); lbTegn(); }
+      LB.pinch = { d, mx, my };
+    }else if(LB.pts.size === 1 && LB.s > 1.001){      // træk: flyt det forstørrede billede
+      LB.tx += e.clientX - fx; LB.ty += e.clientY - fy;
+      lbKlem(); lbTegn();
+      st.classList.add("panorerer");
+    }
+  });
+  const slip = e=>{
+    const p = LB.pts.get(e.pointerId); if(!p) return;
+    LB.pts.delete(e.pointerId);
+    if(LB.pts.size < 2) LB.pinch = null;
+    if(LB.pts.size) return;
+    st.classList.remove("panorerer");
+    const varMulti = LB.multi; LB.multi = false;
+    if(e.type !== "pointerup" || e.pointerType === "mouse" || varMulti) return;
+    // Dobbelttryk: to korte tryk (< 300 ms, næsten uden bevægelse) tæt på hinanden
+    const kort = Date.now() - p.t < 300 && Math.hypot(e.clientX - p.sx, e.clientY - p.sy) < 12;
+    if(!kort){ LB.tap = null; return; }
+    const nu = Date.now();
+    if(LB.tap && nu - LB.tap.t < 350 && Math.hypot(e.clientX - LB.tap.x, e.clientY - LB.tap.y) < 40){
+      LB.tap = null; lbDobbelt(e.clientX, e.clientY);
+    }else LB.tap = { t:nu, x:e.clientX, y:e.clientY };
+  };
+  ["pointerup", "pointercancel"].forEach(t=>st.addEventListener(t, slip));
+  $("lightboxImg").addEventListener("load", lbTilpas);
+  window.addEventListener("resize", ()=>{ if(!$("lightbox").classList.contains("hidden")) lbTilpas(); });
+  if(window.ResizeObserver) new ResizeObserver(()=>{ if(!$("lightbox").classList.contains("hidden")) lbTilpas(); }).observe(st);
+})();
+
+function openLightbox(url, titel){
+  if(!url) return;
+  LB.s = 1; LB.tx = 0; LB.ty = 0; LB.rot = 0; LB.pts.clear(); LB.pinch = null; LB.tap = null;
+  const img = $("lightboxImg");
+  $("lightboxAaben").href = url;
+  $("lightboxTitel").textContent = titel || "Slutrapport";
+  $("lightbox").classList.remove("hidden");
+  document.body.classList.add("lb-open");
+  lbTegn();
+  if(img.getAttribute("src") === url && img.complete) lbTilpas(); else img.src = url;
+}
+function closeLightbox(){
+  $("lightbox").classList.add("hidden");
+  document.body.classList.remove("lb-open");
+  $("lightboxImg").removeAttribute("src");
+}
+document.addEventListener("click", e=>{
+  const el = e.target.closest("[data-lightbox]");
+  if(!el || e.button!==0 || e.ctrlKey || e.metaKey || e.shiftKey) return;
+  e.preventDefault();
+  openLightbox(el.dataset.lightbox, el.dataset.titel);
+});
+document.addEventListener("keydown", e => {
+  if($("lightbox").classList.contains("hidden")) return;
+  if(e.key==="Escape"){ closeLightbox(); return; }
+  if(/^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName)) return;   // skriv i Ret-felterne uden at zoome
+  if(e.key==="+" || e.key==="=") lbZoomKnap(1.5);
+  else if(e.key==="-") lbZoomKnap(1/1.5);
+  else if(e.key==="0") lbNulstil();
+  else if(e.key==="r" || e.key==="R") lbRoter();
+});
+
+async function toggleBekraeft(id, vaerdi){
+  try{ await rpc("saet_bekraeftet", {p_token:OWNER_TOKEN, p_id:id, p_vaerdi:vaerdi}); }
+  catch(e){ alert("Kunne ikke gemme: " + e.message); }
+}
+function aabnRet(id){ $("ret-"+id).classList.remove("hidden"); }
+function lukRet(id){ $("ret-"+id).classList.add("hidden"); }
+async function gemRet(id){
+  const dato = $("ret-dato-"+id).value || null;
+  const ind = parseFloat($("ret-ind-"+id).value);
+  const ovf = parseFloat($("ret-ovf-"+id).value);
+  const kon = parseFloat($("ret-kon-"+id).value);
+  const nrEl = $("ret-nr-"+id);
+  const nyNr = (nrEl.value||"").trim();
+  const origNr = (nrEl.dataset.orig||"").trim();
+  const base = {
+    p_token:OWNER_TOKEN, p_id:id, p_dato:dato,
+    p_indkort: isNaN(ind)?null:ind, p_overfort: isNaN(ovf)?null:ovf,
+    p_kontant: isNaN(kon)?null:kon, p_bro_faerge: null
+  };
+  try{
+    try{
+      await rpc("ret_slutrapport", { ...base, p_slutrapport_nr: nyNr || null });
+    }catch(e){
+      // HTTP 404 = ret_slutrapport har ikke p_slutrapport_nr endnu (DB ikke opdateret).
+      // Gem de øvrige felter alligevel, og sig kun til hvis nummeret rent faktisk blev ændret.
+      if(String(e.message).includes("404")){
+        await rpc("ret_slutrapport", base);
+        if(nyNr !== origNr) alert("Tallene er gemt, men slutrapport-nummeret kræver at ret_slutrapport opdateres i databasen først (se migrationen).");
+      } else throw e;
+    }
+    lukRet(id);
+    refresh();
+  }catch(e){ alert("Kunne ikke gemme rettelsen: " + e.message); }
+}
+
+async function loadFejl(){
+  try{
+    // Billeder til fejl-rækkerne: billede_url hvis udfyldt, ellers filen fra samme chauffør
+    // uploadet tættest på tidspunktet (afviste filer har intet nummer: "_{driver}_{tid}.jpg")
+    const [rows, billeder] = await Promise.all([
+      rpc("hent_fejlede", {p_token:OWNER_TOKEN}),
+      rpc("hent_fejl_billeder", {p_token:OWNER_TOKEN}).catch(()=>[])   // RPC ikke oprettet endnu -> ingen
+    ]);
+    const fejlBillede = new Map((billeder||[]).filter(b=>b && b.navn).map(b=>[b.fejl_id, billedUrl(b.bucket, b.navn)]));
+    const aktive = (rows||[]).filter(r=>r.status==="ny");
+    if(!aktive.length){ $("fejlCard").style.display="none"; return; }
+    $("fejlCard").style.display="block";
+    const fejlUrl = r => r.billede_url ? String(r.billede_url).trim() : (fejlBillede.get(r.id) || "");
+    $("fejlListe").innerHTML = aktive.map(r=>`
+      <div style="border:1px solid var(--red-bg);background:var(--red-bg);border-radius:12px;padding:12px 14px;margin-bottom:10px">
+        <div style="display:flex;justify-content:space-between;font-weight:700">
+          <span>${r.chauffor||"Ukendt chauffør"}</span>
+          <span style="font-weight:400;color:var(--muted);font-size:13px">${new Date(r.modtaget).toLocaleString("da-DK")}</span>
+        </div>
+        <div style="color:var(--red);font-size:14px;margin:4px 0">${r.fejl_besked||"Kunne ikke behandles"}</div>
+        ${r.filename?`<div style="font-size:12px;color:var(--muted)">Fil: ${r.filename}</div>`:""}
+        ${fejlUrl(r)?`<div style="margin-top:8px;display:flex;align-items:center;gap:8px"><img class="thumb" src="${escAttr(fejlUrl(r))}" alt="Billede" data-lightbox="${escAttr(fejlUrl(r))}" data-titel="${escAttr((r.chauffor||"")+" · fejlet upload")}" title="Klik for at se billedet" onerror="this.parentElement.style.display='none'"><a class="billede-link" href="${escAttr(fejlUrl(r))}" data-lightbox="${escAttr(fejlUrl(r))}" data-titel="${escAttr((r.chauffor||"")+" · fejlet upload")}">📷 Se</a></div>`:""}
+        <button onclick="markerRettet('${r.id}')" style="margin-top:8px;border:1px solid var(--line);background:#fff;border-radius:8px;padding:6px 12px;font-size:13px;cursor:pointer">Marker som rettet</button>
+      </div>`).join("");
+  }catch(e){ $("fejlCard").style.display="none"; }
+}
+async function markerRettet(id){
+  try{ await rpc("marker_fejl", {p_token:OWNER_TOKEN, p_id:id, p_status:"rettet"}); loadFejl(); }catch(e){}
+}
+
+async function refresh(){
+  if(!SUPABASE_ANON_KEY || !OWNER_TOKEN){ $("cfg").style.display="block"; return; }
+  const d=$("driver").value, m=$("month").value;
+
+  // 1) Lønseddel + overblik (robust hentning — virker uanset hent_alle-version)
+  try{
+    ALLE = await hentLonsedler(m);
+    const lon = ALLE.find(r=>r.chauffor===d);
+    renderLon(lon);
+    renderOverblik(ALLE);
+  }catch(e){
+    $("lonBody").innerHTML = `<div class="empty">Kunne ikke hente lønseddel. Tjek nøgle/ejer-kode. (${e.message})</div>`;
+  }
+
+  // 2) Slutrapporter — i sin egen try, så en fejl her IKKE fjerner lønsedlen
+  try{
+    const rap = await rpc("hent_ture", {p_token:OWNER_TOKEN, p_maaned:m});
+    const mine = rap.filter(r=>r.chauffor===d);
+    await hentBilledNavne(mine.map(r=>r.slutrapport_nr), d);   // slå faktiske filnavne op før render
+    renderRapporter(mine, rap);
+  }catch(e){
+    $("rapporter").innerHTML = `<div class="empty">Kunne ikke hente ture. (${e.message})</div>`;
+  }
+}
+
+function renderOverblik(rows){
+  rows = rows||[];
+  if(!rows.length){ $("overblik").innerHTML=`<div class="empty">—</div>`; return; }
+  let sum=0;
+  const body = rows.map(r=>{sum+=Number(r.til_udbetaling||0);
+    return `<tr><td>${r.chauffor}</td><td style="text-align:right">${kr(r.indkort_i_alt)}</td>
+      <td style="text-align:right">${kr(r.andel_brutto)}</td>
+      <td style="text-align:right"><b>${kr(r.til_udbetaling)}</b></td></tr>`;}).join("");
+  $("overblik").innerHTML = `<table><tr><th>Chauffør</th><th style="text-align:right">Indkørt</th>
+    <th style="text-align:right">Andel</th><th style="text-align:right">Udbetaling</th></tr>${body}
+    <tr><td><b>I alt</b></td><td></td><td></td><td style="text-align:right"><b>${kr(sum)}</b></td></tr></table>`;
+}
+function copyLon(){
+  const d=$("driver").value, m=$("month").value;
+  const r=ALLE.find(x=>x.chauffor===d); if(!r) return;
+  const t=`${FIRM}\nLønseddel – ${d} (periode ${m})\n`+
+    `Antal ture: ${r.antal_ture}\nIndkørt: ${kr(r.indkort_i_alt)}\n`+
+    `Model: ${r.model}\nAndel: ${kr(r.andel_brutto)}\nTIL UDBETALING: ${kr(r.til_udbetaling)} kr.`;
+  navigator.clipboard.writeText(t); const b=$("copyBtn"); b.textContent="Kopieret ✓"; setTimeout(()=>b.textContent="Kopiér som tekst",1500);
+}
+
+$("driver").addEventListener("change", refresh);
+$("month").addEventListener("change", refresh);
+
+(async function init(){
+  if(!SUPABASE_ANON_KEY || !OWNER_TOKEN){ $("cfg").style.display="block"; }
+  fillDrivers();
+  await fillMonths();
+  refresh();
+  loadFejl();
+})();
+</script>
+</body>
+</html>
