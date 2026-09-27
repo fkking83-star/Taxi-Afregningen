@@ -2,9 +2,9 @@
 -- Rører IKKE lønberegningen (v_lonseddel, v_afregning, v_data, satser), slutrapporter eller ret_slutrapport.
 
 -- 1) Offentlig bucket til billeder. Offentlig = billederne kan vises via public-URL uden login
---    (samme som fejlede-billeder). Der oprettes ingen upload-politikker her, så anon kan IKKE
---    uploade eller slette via denne migration. Om Make skal have en upload-regel til bucket'en,
---    afgøres af policy-tjekket på storage.objects (evt. i en separat migration).
+--    (samme som fejlede-billeder). Der oprettes ingen upload-politikker, så anon kan IKKE uploade
+--    eller slette. storage.objects har ingen policies (tjekket 28/9-2026), så Make uploader med
+--    service-nøglen og kan derfor også bruge denne bucket uden en ny regel.
 insert into storage.buckets (id, name, public, allowed_mime_types)
 values ('slutrapport-billeder', 'slutrapport-billeder', true, array['image/*'])
 on conflict (id) do update
