@@ -57,6 +57,32 @@
   .ret-billede-wrap .hint{font-size:11px;color:var(--muted)}
   .ret-billede{max-width:360px;max-height:360px;border-radius:10px;border:1px solid var(--line);cursor:zoom-in;object-fit:contain;background:#F0F1F4;display:block}
   .ret-billede-empty{width:180px;height:120px;border-radius:10px;border:1px dashed var(--line);display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:13px;background:#F9FAFB}
+  /* "Udfyld og godkend" på fejlkort */
+  .udfyld{margin-top:10px;background:#fff;border:1px solid var(--line);border-radius:12px;padding:12px}
+  .udfyld-grid{display:flex;gap:14px;align-items:flex-start}
+  .udfyld-billede{flex:0 0 240px}
+  .udfyld-billede img{width:100%;max-height:340px;object-fit:contain;border-radius:10px;border:1px solid var(--line);background:#F0F1F4;cursor:zoom-in;display:block}
+  .udfyld-billede .hint{font-size:11px;color:var(--muted)}
+  .udfyld-felter{flex:1;min-width:0;display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px 10px}
+  .udfyld-felter > div{min-width:0}
+  .udfyld-felter label{font-size:12px;margin-bottom:2px}
+  .udfyld-felter input,.udfyld-felter select{width:100%;min-width:0;font-size:16px;padding:8px;border:1px solid var(--line);border-radius:8px;background:#fff}
+  .udfyld-diff{grid-column:1/-1;background:#F4F5F7;border-radius:8px;padding:8px 10px;font-size:15px;display:flex;justify-content:space-between;gap:8px;font-variant-numeric:tabular-nums}
+  .udfyld-diff b{font-size:17px;white-space:nowrap}
+  .udfyld-fejl{grid-column:1/-1;color:var(--red);font-size:14px;font-weight:600}
+  .udfyld-fejl:empty{display:none}
+  .udfyld-knapper{grid-column:1/-1;display:flex;gap:8px;flex-wrap:wrap}
+  .udfyld-knapper button{padding:10px 16px;border-radius:8px;font-size:15px;cursor:pointer}
+  .btn-gem{background:var(--green);color:#fff;border:none;font-weight:700}
+  .btn-gem:disabled{opacity:.6;cursor:wait}
+  .btn-sek{background:#fff;border:1px solid var(--line)}
+  @media (max-width:699px){
+    .udfyld-grid{flex-direction:column}
+    .udfyld-billede{flex:none;width:100%}
+    .udfyld-billede img{max-height:260px}
+    .udfyld-felter{width:100%;grid-template-columns:repeat(2,minmax(0,1fr))}
+    .udfyld-knapper button{flex:1}
+  }
   /* Sidepanel (ikke fuldskærm), så Ret-felterne kan bruges mens billedet er åbent. Under 900px: fuld skærm */
   #lightbox{position:fixed;top:0;right:0;bottom:0;width:min(50vw,640px);background:#14181F;z-index:1000;display:flex;flex-direction:column;box-shadow:-8px 0 30px rgba(0,0,0,.25)}
   #lightbox .lb-bar{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px 10px;padding:10px 14px;color:#fff;font-size:13px;border-bottom:1px solid #2A303B}
@@ -123,7 +149,7 @@
     <div class="note">Røde rækker = mistænkt dublet (samme dato og beløb). Ret/slet i Supabase hvis det er en dublet.
       Gult ⚠ nummer = passer ikke med nogen bils nummerrække (alle chaufførers vagter tæller med, da bilerne deles) — fx OCR-forveksling af 18/19. Hold musen over for forslag, ret via Ret.</div>
   </div>
-  <p style="text-align:center;font-size:11px;color:#B7BCC6;margin:14px 0 0">dashboard v2026-09-28</p>
+  <p style="text-align:center;font-size:11px;color:#B7BCC6;margin:14px 0 0">dashboard v2026-09-29</p>
 </main>
 
 <div id="lightbox" class="hidden" role="dialog" aria-label="Billede af slutrapport">
@@ -164,7 +190,14 @@ async function rpc(fn,args){
     headers:{ apikey:SUPABASE_ANON_KEY, Authorization:`Bearer ${SUPABASE_ANON_KEY}`, "Content-Type":"application/json" },
     body: JSON.stringify(args)
   });
-  if(!r.ok) throw new Error("HTTP "+r.status);
+  if(!r.ok){
+    // Supabase sender fejlteksten som JSON ({message: ...}); den vises til ejeren i stedet for kun "HTTP 400"
+    let besked = "";
+    try{ besked = (JSON.parse(await r.text()) || {}).message || ""; }catch(_){}
+    const e = new Error("HTTP " + r.status + (besked ? ": " + besked : ""));
+    e.status = r.status; e.besked = besked;
+    throw e;
+  }
   const txt = await r.text();          // nogle funktioner (fx saet_bekraeftet) svarer tomt
   return txt ? JSON.parse(txt) : null; // tomt svar = intet at læse, ikke en fejl
 }
@@ -606,6 +639,111 @@ async function gemRet(id){
   }catch(e){ alert("Kunne ikke gemme rettelsen: " + e.message); }
 }
 
+/* ===== "Udfyld og godkend": opret slutrapport-rækken fra et fejlkort (bonen ved siden af) ===== */
+const FEJL_KORT = new Map();   // fejl-id -> { r: fejl-rækken, url: billedets URL, navn: filnavn i Storage }
+
+// Forudfyld nr og dato fra fejlbeskeden ("nr 1682, dato 2026-09-27") eller billedets filnavn ("1682_faysal_...")
+function fejlForslag(r, navn){
+  const tekst = String(r.fejl_besked || "");
+  let nr = (tekst.match(/\bnr\.?\s*[:#]?\s*(\d{3,5})\b/i) || [])[1] || "";
+  if(!nr){ const fra = String(navn || "").split("_")[0]; if(/^\d{3,5}$/.test(fra)) nr = fra; }
+  let dato = (tekst.match(/\b(\d{4}-\d{2}-\d{2})\b/) || [])[1] || "";
+  if(!dato){ const m = tekst.match(/\b(\d{1,2})[.\/-](\d{1,2})[.\/-](\d{4})\b/); if(m) dato = `${m[3]}-${m[2].padStart(2,"0")}-${m[1].padStart(2,"0")}`; }
+  return { nr, dato };
+}
+function udfyldForm(r, url){
+  const id = escAttr(r.id);
+  const kort = FEJL_KORT.get(r.id) || {};
+  const f = fejlForslag(r, kort.navn);
+  const valgt = DRIVERS.find(d=>d.toLowerCase() === String(r.chauffor||"").trim().toLowerCase()) || String(r.chauffor||"").trim();
+  const navne = [...new Set([...DRIVERS, valgt].filter(Boolean))];
+  const felt = (label, input) => `<div><label>${label}</label>${input}</div>`;
+  const tal = (key, label, v) => felt(label, `<input type="number" step="0.01" inputmode="decimal" id="uf-${key}-${id}" value="${v}" oninput="udfyldDiff('${id}')">`);
+  const titel = escAttr(`${r.chauffor||""} · fejlet upload`);
+  return `<div class="udfyld hidden" id="udfyld-${id}">
+    <div class="udfyld-grid">
+      <div class="udfyld-billede">${url
+        ? `<img src="${escAttr(url)}" alt="Bonen" data-lightbox="${escAttr(url)}" data-titel="${titel}" onerror="this.replaceWith(Object.assign(document.createElement('div'),{className:'ret-billede-empty',textContent:'Intet billede'}))"><span class="hint">Tryk på billedet for zoom</span>`
+        : `<div class="ret-billede-empty">Intet billede</div>`}</div>
+      <div class="udfyld-felter">
+        ${felt("Chauffør", `<select id="uf-ch-${id}">${navne.map(n=>`<option${n===valgt?" selected":""}>${escAttr(n)}</option>`).join("")}</select>`)}
+        ${felt("Slutrapport nr", `<input type="text" inputmode="numeric" id="uf-nr-${id}" value="${escAttr(f.nr)}" placeholder="fx 1682">`)}
+        ${felt("Dato (vagt start)", `<input type="date" id="uf-dato-${id}" value="${escAttr(f.dato)}">`)}
+        ${felt("Vagt start", `<input type="time" id="uf-vs-${id}">`)}
+        ${felt("Vagt slut", `<input type="time" id="uf-ve-${id}">`)}
+        ${tal("ind", "Indkørt", "")}
+        ${tal("ovf", "Overført", "")}
+        ${tal("bro", "Bro / færge", "0")}
+        <div class="udfyld-diff"><span>Difference (afregn) = indkørt − overført − bro</span><b id="uf-diff-${id}">–</b></div>
+        <div class="udfyld-fejl" id="uf-fejl-${id}"></div>
+        <div class="udfyld-knapper">
+          <button type="button" class="btn-gem" id="uf-gem-${id}" onclick="gemUdfyld('${id}')">Gem</button>
+          <button type="button" class="btn-sek" onclick="lukUdfyld('${id}')">Annullér</button>
+        </div>
+      </div>
+    </div>
+  </div>`;
+}
+function aabnUdfyld(id){
+  const el = $("udfyld-"+id); if(!el) return;
+  el.classList.remove("hidden");
+  udfyldDiff(id);
+  const k = FEJL_KORT.get(id);
+  // Bred skærm: bonen åbnes i sidepanelet ved siden af formularen (mobil: tryk på billedet i formularen)
+  if(k && k.url && window.innerWidth >= 900) openLightbox(k.url, `${k.r.chauffor||""} · fejlet upload`);
+  const nr = $("uf-nr-"+id), dato = $("uf-dato-"+id);
+  (nr && !nr.value ? nr : dato && !dato.value ? dato : $("uf-ind-"+id))?.focus({preventScroll:true});
+  el.scrollIntoView({block:"nearest"});
+}
+function lukUdfyld(id){
+  $("udfyld-"+id)?.classList.add("hidden");
+  const k = FEJL_KORT.get(id);
+  if(k && k.url && $("lightboxImg").getAttribute("src") === k.url) closeLightbox();
+}
+const ufTal = (key, id) => { const v = String($(`uf-${key}-${id}`)?.value ?? "").trim().replace(",", "."); return v === "" ? null : Number(v); };
+function udfyldDiff(id){
+  const ind = ufTal("ind", id), ovf = ufTal("ovf", id), bro = ufTal("bro", id) ?? 0;
+  const el = $("uf-diff-"+id); if(!el) return;
+  el.textContent = (ind === null || ovf === null || [ind, ovf, bro].some(isNaN)) ? "–" : kr(ind - ovf - bro) + " kr.";
+}
+// Regnskabsmåned: dag 28 og frem tæller til næste måned
+function regnskabsmaaned(dato){
+  const [y, m, d] = String(dato).split("-").map(Number); if(!y) return "";
+  const t = d >= 28 ? new Date(Date.UTC(y, m, 1)) : new Date(Date.UTC(y, m - 1, 1));
+  return t.getUTCFullYear() + "-" + String(t.getUTCMonth() + 1).padStart(2, "0");
+}
+async function gemUdfyld(id){
+  const k = FEJL_KORT.get(id); if(!k) return;
+  const fejlEl = $("uf-fejl-"+id), knap = $("uf-gem-"+id);
+  const v = key => String($(`uf-${key}-${id}`)?.value ?? "").trim();
+  const data = {
+    p_token:OWNER_TOKEN, p_fejl_id:id, p_chauffor:v("ch"), p_slutrapport_nr:v("nr"), p_dato:v("dato") || null,
+    p_vagt_start:v("vs") || null, p_vagt_slut:v("ve") || null,
+    p_indkort:ufTal("ind", id), p_overfort:ufTal("ovf", id), p_bro_faerge:ufTal("bro", id) ?? 0,
+    p_billede_url:k.url || null
+  };
+  const mangler = !data.p_chauffor ? "Vælg chauffør." : !/^\d{3,5}$/.test(data.p_slutrapport_nr) ? "Slutrapport nr skal være 3–5 cifre."
+    : !data.p_dato ? "Udfyld dato." : (data.p_indkort === null || data.p_overfort === null) ? "Udfyld indkørt og overført."
+    : [data.p_indkort, data.p_overfort, data.p_bro_faerge].some(n=>isNaN(n) || n < 0) ? "Beløb skal være tal (0 eller mere)." : "";
+  if(mangler){ fejlEl.textContent = mangler; return; }
+  fejlEl.textContent = ""; knap.disabled = true; knap.textContent = "Gemmer…";
+  try{
+    await rpc("opret_slutrapport", data);
+  }catch(e){
+    fejlEl.textContent = e.status === 404
+      ? "Funktionen opret_slutrapport findes ikke i databasen endnu (migrationen er ikke kørt)."
+      : (e.besked || e.message || "Kunne ikke gemme.");
+    knap.disabled = false; knap.textContent = "Gem";
+    return;
+  }
+  lukUdfyld(id);
+  // Vis chaufføren og regnskabsmåneden, rækken kom ind i, så den kan ses i tabellen og lønsedlen
+  if([...$("driver").options].some(o=>o.value === data.p_chauffor)) $("driver").value = data.p_chauffor;
+  const rm = regnskabsmaaned(data.p_dato);
+  if([...$("month").options].some(o=>o.value === rm)) $("month").value = rm;
+  await Promise.all([loadFejl(), refresh()]);
+}
+
 async function loadFejl(){
   try{
     // Billeder til fejl-rækkerne: billede_url hvis udfyldt, ellers filen fra samme chauffør
@@ -619,8 +757,10 @@ async function loadFejl(){
     if(!aktive.length){ $("fejlCard").style.display="none"; return; }
     $("fejlCard").style.display="block";
     const fejlUrl = r => r.billede_url ? String(r.billede_url).trim() : (fejlBillede.get(r.id) || "");
+    FEJL_KORT.clear();
+    aktive.forEach(r=>FEJL_KORT.set(r.id, { r, url:fejlUrl(r), navn:(billeder||[]).find(b=>b && b.fejl_id===r.id)?.navn || "" }));
     $("fejlListe").innerHTML = aktive.map(r=>`
-      <div style="border:1px solid var(--red-bg);background:var(--red-bg);border-radius:12px;padding:12px 14px;margin-bottom:10px">
+      <div id="fejl-${escAttr(r.id)}" style="border:1px solid var(--red-bg);background:var(--red-bg);border-radius:12px;padding:12px 14px;margin-bottom:10px">
         <div style="display:flex;justify-content:space-between;font-weight:700">
           <span>${r.chauffor||"Ukendt chauffør"}</span>
           <span style="font-weight:400;color:var(--muted);font-size:13px">${new Date(r.modtaget).toLocaleString("da-DK")}</span>
@@ -628,7 +768,11 @@ async function loadFejl(){
         <div style="color:var(--red);font-size:14px;margin:4px 0">${r.fejl_besked||"Kunne ikke behandles"}</div>
         ${r.filename?`<div style="font-size:12px;color:var(--muted)">Fil: ${r.filename}</div>`:""}
         ${fejlUrl(r)?`<div style="margin-top:8px;display:flex;align-items:center;gap:8px"><img class="thumb" src="${escAttr(fejlUrl(r))}" alt="Billede" data-lightbox="${escAttr(fejlUrl(r))}" data-titel="${escAttr((r.chauffor||"")+" · fejlet upload")}" title="Klik for at se billedet" onerror="this.parentElement.style.display='none'"><a class="billede-link" href="${escAttr(fejlUrl(r))}" data-lightbox="${escAttr(fejlUrl(r))}" data-titel="${escAttr((r.chauffor||"")+" · fejlet upload")}">📷 Se</a></div>`:""}
-        <button onclick="markerRettet('${r.id}')" style="margin-top:8px;border:1px solid var(--line);background:#fff;border-radius:8px;padding:6px 12px;font-size:13px;cursor:pointer">Marker som rettet</button>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">
+          <button onclick="aabnUdfyld('${r.id}')" style="background:var(--green);color:#fff;border:none;border-radius:8px;padding:6px 12px;font-size:13px;font-weight:700;cursor:pointer">Udfyld og godkend</button>
+          <button onclick="markerRettet('${r.id}')" style="border:1px solid var(--line);background:#fff;border-radius:8px;padding:6px 12px;font-size:13px;cursor:pointer">Marker som rettet</button>
+        </div>
+        ${udfyldForm(r, fejlUrl(r))}
       </div>`).join("");
   }catch(e){ $("fejlCard").style.display="none"; }
 }
