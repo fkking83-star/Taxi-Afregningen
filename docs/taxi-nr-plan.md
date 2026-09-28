@@ -6,11 +6,13 @@ sammenligne med alle chaufførers vagter.
 
 ## Bil-fordeling (bekræftet af ejeren 28/9-2026)
 
-| Taxi nr.  | Slutrapport-nr. | Fast chauffør |
-|-----------|-----------------|---------------|
-| 001-7144  | 11xx            | Adan          |
-| 001-8208  | 18xx            | Qaalid        |
-| 001-8646  | 16xx            | –             |
+| Taxi nr.  | Slutrapport-nr. | Chauffør(er)                |
+|-----------|-----------------|-----------------------------|
+| 001-7144  | 11xx            | Adan                        |
+| 001-8208  | 18xx            | Qaalid                      |
+| 001-8646  | 16xx            | Faysal og Fuad (deler bil)  |
+
+Abdikarins bil er ikke afklaret endnu.
 
 ## Trin
 1. **Make:** OCR-prompten læser også "TAXI NR." og sender `taxi_nr` (fx `"001-8208"`) i JSON'en.
