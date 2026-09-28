@@ -98,7 +98,7 @@ check((await hb(db, ['1863'], 'Qaalid', 'forkert')).length === 0, 'Forkert token
 const sig = await q(db, `select pg_get_function_identity_arguments(p.oid) a, pg_get_function_result(p.oid) r from pg_proc p where proname='hent_billeder'`);
 check(sig.length === 1 && sig[0].a === 'p_token text, p_numre text[], p_chauffor text' && sig[0].r === 'TABLE(navn text, slutrapport_nr text, bucket text)', 'hent_billeder: uændret signatur og returtype (dashboardet skal ikke ændres)');
 
-// Lønberegning berørt
+// Lønberegning uberørt
 const vEfter = await q(db, `select column_name from information_schema.columns where table_name='v_data' order by ordinal_position`);
 check(JSON.stringify(vFoer) === JSON.stringify(vEfter), 'v_data: samme kolonner før og efter');
 
