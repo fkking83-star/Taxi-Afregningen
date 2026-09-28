@@ -12,9 +12,10 @@ alter table slutrapporter add column if not exists bekraeftet boolean not null d
 -- 3) v_data viderefører de to nye kolonner til alle aflæsninger (hent_ture, dashboard).
 -- Live har billede_url og bekraeftet FØR regnskabsmaaned (tjekket 29/9-2026 med information_schema.columns).
 -- Postgres kan ikke indsætte kolonner midt i et view med CREATE OR REPLACE ("cannot change name of view
--- column"), så v_data og det, der bygger på den, droppes og genskabes. Indholdet er uændret: v_lonseddel,
--- v_afregning, hent_alle og hent_kvittering er kopieret ordret fra baseline-migrationen og er sammenlignet
--- med live (tests/sql/live_skema.test.mjs). v_lonseddel_pen genskabes ikke: den findes ikke live (29/9-2026).
+-- column"), så v_data og det, der bygger på den, droppes og genskabes. v_lonseddel og v_afregning er kopieret
+-- ordret fra baseline-migrationen. hent_alle og hent_kvittering er genskabt præcis som de står live 29/9-2026
+-- (bemærk: live hent_kvittering matcher token uden trim(), baseline havde trim()). Alt er sammenlignet med live
+-- (tests/sql/live_skema.test.mjs). v_lonseddel_pen genskabes ikke: den findes ikke live (29/9-2026).
 -- Rettet 29/9-2026, så databasen kan bygges fra bunden. Live er upåvirket (filen er allerede kørt dér).
 drop function if exists hent_alle(text, text);
 drop function if exists hent_kvittering(text, text);
@@ -128,7 +129,7 @@ CREATE OR REPLACE FUNCTION public.hent_alle(p_token text, p_maaned text DEFAULT 
  SET search_path TO 'public'
 AS $function$
   select L.* from v_lonseddel L
-  where exists (select 1 from config where n='owner_token' and v=p_token)
+  where exists (select 1 from config where n='owner_token' and v = p_token)
     and (p_maaned is null or L.regnskabsmaaned = p_maaned);
 $function$
 ;
@@ -140,7 +141,7 @@ CREATE OR REPLACE FUNCTION public.hent_kvittering(p_token text, p_maaned text DE
  SET search_path TO 'public'
 AS $function$
   select L.* from v_lonseddel L
-  where L.chauffor = (select chauffor from satser where trim(token) = trim(p_token))
+  where L.chauffor = (select chauffor from satser where token = p_token)
     and (p_maaned is null or L.regnskabsmaaned = p_maaned);
 $function$
 ;

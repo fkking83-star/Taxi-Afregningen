@@ -58,7 +58,6 @@ begin
             nullif(trim(p_vagt_start), ''), nullif(trim(p_vagt_slut), ''), nullif(trim(p_billede_url), ''))
     returning id into v_id;
   exception when unique_violation then
-    -- To samtidige gem af samme bon: samme tydelige besked som ovenfor
     raise exception 'Rapport nr % findes allerede for %', v_nr, v_chauffor;
   end;
 

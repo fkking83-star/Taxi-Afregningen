@@ -23,7 +23,7 @@ returns trigger
 language plpgsql as $$
 begin
   -- Deaktiveret 2026-09: OCR-prompten leverer nu altid VAGT START's dato direkte.
-  -- Tidligere logik (trak 1 dag fra ved nattevagt, dvs. vagt_slut < vagt_start)
+  -- Den tidligere logik (trak 1 dag fra ved nattevagt, dvs. vagt_slut < vagt_start)
   -- antog fejlagtigt at 'dato' stadig var vagtens SLUT-dag og gav derfor en
   -- ekstra, forkert dag fratrukket allerede korrekte datoer.
   return new;
