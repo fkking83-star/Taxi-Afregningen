@@ -1,13 +1,13 @@
 // Forslaget supabase/pending/20260929100000_luk_direkte_adgang.sql:
 // FØR: anon kan læse tokens/løn og ændre satser direkte. EFTER: kun RPC'erne virker for anon.
-// Bygger på baseline-migrationen (grants som live). Skiftes til hele kæden, når 20260919220000 er rettet.
+// Bygger hele kæden fra supabase/migrations/ og lægger live's grants oveni (tjekket 29/9-2026).
 import { readFileSync } from 'fs';
 import { bygFraMigrationer } from '../hjaelpere/skema.mjs';
 let f = 0; const check = (ok, m) => { console.log(`${ok ? 'PASS' : 'FAIL'}  ${m}`); if (!ok) f++; };
 const FORSLAG = readFileSync(new URL('../../supabase/pending/20260929100000_luk_direkte_adgang.sql', import.meta.url), 'utf8');
 
-const { db, fejl } = await bygFraMigrationer({ til: '20260919201534_remote_schema.sql' });
-check(!fejl, 'Baseline bygger' + (fejl ? ': ' + fejl.besked : ''));
+const { db, fejl } = await bygFraMigrationer();
+check(!fejl, 'Kæden bygger' + (fejl ? ': ' + fejl.besked : ''));
 await db.exec(`
   alter role service_role bypassrls;   -- som i Supabase
   alter default privileges for role postgres in schema public grant all on tables to anon, authenticated;   -- som i Supabase
@@ -72,11 +72,20 @@ r = await somAnon(`select chauffor from hent_kvittering('tok-fuad')`);
 check(!r.fejl && r.rows.length === 1 && r.rows[0].chauffor === 'Fuad', 'hent_kvittering: chaufføren ser kun sin egen' + (r.fejl ? ': ' + r.fejl : ''));
 r = await somAnon(`select slutrapport_nr from hent_ture('tok-adan', '2026-09')`);
 check(!r.fejl && r.rows.length === 1 && r.rows[0].slutrapport_nr === '1101', 'hent_ture: chaufføren ser kun sine ture' + (r.fejl ? ': ' + r.fejl : ''));
+r = await somAnon(`select navn from hent_billeder('ejer', array['1001'], 'Fuad')`);
+check(!r.fejl, 'hent_billeder (ejer) virker' + (r.fejl ? ': ' + r.fejl : ''));
 r = await somAnon(`select id from hent_fejlede('ejer')`);
 check(!r.fejl && r.rows.length === 1, 'hent_fejlede (ejer) virker' + (r.fejl ? ': ' + r.fejl : ''));
 const fid = (await db.query(`select id from fejlede_uploads`)).rows[0].id;
 r = await somAnon(`select marker_fejl('ejer', $1, 'rettet')`, [fid]);
 check(!r.fejl && (await db.query(`select status from fejlede_uploads`)).rows[0].status === 'rettet', 'marker_fejl (ejer) virker' + (r.fejl ? ': ' + r.fejl : ''));
+const fid2 = (await db.query(`insert into fejlede_uploads (chauffor, fejl_besked) values ('Fuad', 'y') returning id`)).rows[0].id;
+r = await somAnon(`select opret_slutrapport('ejer', $1, 'Fuad', '1003', '2026-09-14', '06:00', '14:00', 100, 90) id`, [fid2]);
+check(!r.fejl && (await db.query(`select count(*)::int n from slutrapporter where slutrapport_nr = '1003'`)).rows[0].n === 1, '"Udfyld og godkend" (opret_slutrapport) virker' + (r.fejl ? ': ' + r.fejl : ''));
+const rid = (await db.query(`select id from slutrapporter where slutrapport_nr = '1003'`)).rows[0].id;
+r = await somAnon(`select ret_slutrapport('ejer', $1, null, 110, null, null, null, null)`, [rid]);
+check(!r.fejl && Number((await db.query(`select indkort from slutrapporter where id = $1`, [rid])).rows[0].indkort) === 110, 'Ret (ret_slutrapport) virker' + (r.fejl ? ': ' + r.fejl : ''));
+await db.exec(`delete from slutrapporter where slutrapport_nr = '1003'`);
 
 // service_role (Make med service-nøglen) og nye tabeller
 await db.exec('begin; set local role service_role;');
