@@ -1,0 +1,28 @@
+# Kører alle tests i tests/ ved hver pull request og hver ændring på main.
+# SQL-testene bygger databasen fra supabase/migrations/ i en rigtig Postgres (PGlite);
+# browser-testene kører site/dashboard.html i Chromium (desktop + mobil med touch).
+name: Tests
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: tests
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: tests/package-lock.json
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - run: npm test

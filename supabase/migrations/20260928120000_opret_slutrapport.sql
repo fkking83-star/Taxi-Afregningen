@@ -1,9 +1,3 @@
--- ================================================================================================
--- IKKE KØRT. Ligger i supabase/pending/ (ikke migrations/), så Supabase CLI ikke kører den automatisk.
--- Når den er kørt i SQL Editor: flyt filen til supabase/migrations/ uændret.
--- Testet mod PGlite (21 tjek): opretter rækken + sætter fejl-rækken til rettet i samme transaktion,
--- tydelig besked ved dublet, afviser forkert ejer-kode / allerede godkendt / manglende felter.
--- ================================================================================================
 -- opret_slutrapport: "Udfyld og godkend" fra kortene under Fejlede uploads i dashboardet.
 -- Opretter én række i slutrapporter ud fra ejerens indtastning (med bonen ved siden af) og
 -- markerer fejl-rækken som 'rettet' i SAMME transaktion: fejler noget, sker ingen af delene.
@@ -64,7 +58,6 @@ begin
             nullif(trim(p_vagt_start), ''), nullif(trim(p_vagt_slut), ''), nullif(trim(p_billede_url), ''))
     returning id into v_id;
   exception when unique_violation then
-    -- To samtidige gem af samme bon: samme tydelige besked som ovenfor
     raise exception 'Rapport nr % findes allerede for %', v_nr, v_chauffor;
   end;
 

@@ -97,18 +97,6 @@ begin
 end $function$
 ;
 
-CREATE OR REPLACE FUNCTION public.hent_alle(p_token text, p_maaned text DEFAULT NULL::text)
- RETURNS SETOF public.v_lonseddel
- LANGUAGE sql
- SECURITY DEFINER
- SET search_path TO 'public'
-AS $function$
-  select L.* from v_lonseddel L
-  where exists (select 1 from config where n='owner_token' and v=p_token)
-    and (p_maaned is null or L.regnskabsmaaned = p_maaned);
-$function$
-;
-
 CREATE OR REPLACE FUNCTION public.hent_fejlede(p_token text)
  RETURNS SETOF public.fejlede_uploads
  LANGUAGE sql
@@ -118,18 +106,6 @@ AS $function$
   select f.* from fejlede_uploads f
   where exists (select 1 from config where n='owner_token' and v = p_token)
   order by f.modtaget desc;
-$function$
-;
-
-CREATE OR REPLACE FUNCTION public.hent_kvittering(p_token text, p_maaned text DEFAULT NULL::text)
- RETURNS SETOF public.v_lonseddel
- LANGUAGE sql
- SECURITY DEFINER
- SET search_path TO 'public'
-AS $function$
-  select L.* from v_lonseddel L
-  where L.chauffor = (select chauffor from satser where trim(token) = trim(p_token))
-    and (p_maaned is null or L.regnskabsmaaned = p_maaned);
 $function$
 ;
 
@@ -342,6 +318,34 @@ create or replace view "public"."v_afregning" as  WITH pr AS (
    FROM (pr
      JOIN public.satser sat ON ((sat.chauffor = pr.chauffor)))
   ORDER BY pr.regnskabsmaaned, pr.chauffor;
+
+
+-- hent_alle og hent_kvittering returnerer v_lonseddel og skal derfor oprettes EFTER viewet.
+-- (Flyttet hertil 2026-09-29, så skemaet kan bygges fra bunden i et test-projekt; indholdet er uændret.
+-- Live er upåvirket: migrationen er allerede registreret som kørt der.)
+CREATE OR REPLACE FUNCTION public.hent_alle(p_token text, p_maaned text DEFAULT NULL::text)
+ RETURNS SETOF public.v_lonseddel
+ LANGUAGE sql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+  select L.* from v_lonseddel L
+  where exists (select 1 from config where n='owner_token' and v=p_token)
+    and (p_maaned is null or L.regnskabsmaaned = p_maaned);
+$function$
+;
+
+CREATE OR REPLACE FUNCTION public.hent_kvittering(p_token text, p_maaned text DEFAULT NULL::text)
+ RETURNS SETOF public.v_lonseddel
+ LANGUAGE sql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+  select L.* from v_lonseddel L
+  where L.chauffor = (select chauffor from satser where trim(token) = trim(p_token))
+    and (p_maaned is null or L.regnskabsmaaned = p_maaned);
+$function$
+;
 
 
 grant delete on table "public"."chauffør Afregning" to "anon";

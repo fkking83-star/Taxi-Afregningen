@@ -1,0 +1,15 @@
+{
+  "name": "taxi-afregning-tests",
+  "private": true,
+  "description": "Tests for Taxi & Flex 22 afregning: SQL (migrationer mod rigtig Postgres via PGlite), enhedstests og dashboard i Chromium (desktop + mobil).",
+  "scripts": {
+    "test": "node koer-alle.mjs",
+    "test:sql": "node koer-alle.mjs sql",
+    "test:enhed": "node koer-alle.mjs enhed",
+    "test:browser": "node koer-alle.mjs browser"
+  },
+  "devDependencies": {
+    "@electric-sql/pglite": "0.3.16",
+    "playwright": "1.56.1"
+  }
+}

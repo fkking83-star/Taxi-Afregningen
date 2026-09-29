@@ -76,12 +76,29 @@
   .btn-gem{background:var(--green);color:#fff;border:none;font-weight:700}
   .btn-gem:disabled{opacity:.6;cursor:wait}
   .btn-sek{background:#fff;border:1px solid var(--line)}
+  /* OCR-forslag i "Udfyld og godkend" og dublet-visning på fejlkortet */
+  .udfyld-felter input.ocr{background:#FFF9E6;border-color:#F0D98A}
+  .ocr-tag{font-size:10px;font-weight:700;color:#7A5F00;background:#FFF1BF;border-radius:4px;padding:0 4px;margin-left:4px;vertical-align:1px}
+  .udfyld-ocr-note{grid-column:1/-1;font-size:13px;color:#6B5600;background:#FFF6D9;border-radius:8px;padding:6px 10px}
+  .dublet{margin-top:8px;border-radius:10px;padding:10px 12px;font-size:14px;border:1px solid var(--line);background:#fff}
+  .dublet-findes{font-weight:700;font-variant-numeric:tabular-nums}
+  .dublet-tekst{margin-top:2px}
+  .dublet-anden{border-color:#F0C36D;background:#FFF6D9}
+  .dublet-anden .dublet-tekst{color:#8A5A00;font-weight:600}
+  .dublet-ens{border-color:#A9D8BD;background:var(--green-bg)}
+  .dublet-ens .dublet-tekst{color:var(--green);font-weight:600}
+  .dublet-neutral .dublet-tekst{color:var(--muted)}
+  .dublet-knapper{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
+  .dublet-knapper button{padding:8px 12px;border-radius:8px;font-size:14px;cursor:pointer;border:1px solid var(--line);background:#fff}
+  .dublet-knapper .btn-ens{background:var(--green);color:#fff;border-color:var(--green);font-weight:700}
+  tr.fremhaev td{background:#FFF6D9 !important}
   @media (max-width:699px){
     .udfyld-grid{flex-direction:column}
     .udfyld-billede{flex:none;width:100%}
     .udfyld-billede img{max-height:260px}
     .udfyld-felter{width:100%;grid-template-columns:repeat(2,minmax(0,1fr))}
     .udfyld-knapper button{flex:1}
+    .dublet-knapper button{flex:1;padding:11px 12px;font-size:15px}
   }
   /* Sidepanel (ikke fuldskærm), så Ret-felterne kan bruges mens billedet er åbent. Under 900px: fuld skærm */
   #lightbox{position:fixed;top:0;right:0;bottom:0;width:min(50vw,640px);background:#14181F;z-index:1000;display:flex;flex-direction:column;box-shadow:-8px 0 30px rgba(0,0,0,.25)}
@@ -149,7 +166,7 @@
     <div class="note">Røde rækker = mistænkt dublet (samme dato og beløb). Ret/slet i Supabase hvis det er en dublet.
       Gult ⚠ nummer = passer ikke med nogen bils nummerrække (alle chaufførers vagter tæller med, da bilerne deles) — fx OCR-forveksling af 18/19. Hold musen over for forslag, ret via Ret.</div>
   </div>
-  <p style="text-align:center;font-size:11px;color:#B7BCC6;margin:14px 0 0">dashboard v2026-09-29</p>
+  <p style="text-align:center;font-size:11px;color:#B7BCC6;margin:14px 0 0">dashboard v2026-09-29b</p>
 </main>
 
 <div id="lightbox" class="hidden" role="dialog" aria-label="Billede af slutrapport">
@@ -192,10 +209,10 @@ async function rpc(fn,args){
   });
   if(!r.ok){
     // Supabase sender fejlteksten som JSON ({message: ...}); den vises til ejeren i stedet for kun "HTTP 400"
-    let besked = "";
-    try{ besked = (JSON.parse(await r.text()) || {}).message || ""; }catch(_){}
+    let besked = "", detaljer = "", hint = "";
+    try{ const j = JSON.parse(await r.text()) || {}; besked = j.message || ""; detaljer = j.details || ""; hint = j.hint || ""; }catch(_){}
     const e = new Error("HTTP " + r.status + (besked ? ": " + besked : ""));
-    e.status = r.status; e.besked = besked;
+    e.status = r.status; e.besked = besked; e.detaljer = detaljer; e.hint = hint;
     throw e;
   }
   const txt = await r.text();          // nogle funktioner (fx saet_bekraeftet) svarer tomt
@@ -640,16 +657,57 @@ async function gemRet(id){
 }
 
 /* ===== "Udfyld og godkend": opret slutrapport-rækken fra et fejlkort (bonen ved siden af) ===== */
-const FEJL_KORT = new Map();   // fejl-id -> { r: fejl-rækken, url: billedets URL, navn: filnavn i Storage }
+const FEJL_KORT = new Map();   // fejl-id -> { r: fejl-rækken, url: billedets URL, navn: filnavn i Storage, dublet: eksisterende række }
 
-// Forudfyld nr og dato fra fejlbeskeden ("nr 1682, dato 2026-09-27") eller billedets filnavn ("1682_faysal_...")
+// OCR-resultatet på fejl-rækken (raa_data fra Make): objekt eller JSON-tekst. Mangler/ugyldigt -> null.
+function raaData(r){
+  let d = r && r.raa_data;
+  if(typeof d === "string"){ try{ d = JSON.parse(d); }catch(_){ d = null; } }
+  return d && typeof d === "object" && !Array.isArray(d) ? d : null;
+}
+// Tal fra OCR: 3440, "3440.00", "3.440,00" eller "3440,5". Ukendt -> "" (feltet står tomt).
+function ocrTal(v){
+  if(v === null || v === undefined || v === "") return "";
+  if(typeof v === "number") return isFinite(v) ? String(v) : "";
+  let t = String(v).trim().replace(/\s|kr\.?/gi, "");
+  if(t.includes(",") && t.includes(".")) t = t.lastIndexOf(",") > t.lastIndexOf(".") ? t.replace(/\./g, "").replace(",", ".") : t.replace(/,/g, "");
+  else if(t.includes(",")) t = t.replace(",", ".");
+  else if(/^\d{1,3}(\.\d{3})+$/.test(t)) t = t.replace(/\./g, "");   // "3.440" = 3440 (dansk tusindtalsskilletegn)
+  const n = Number(t);
+  return t !== "" && isFinite(n) ? String(n) : "";
+}
+function ocrDato(v){
+  const t = String(v ?? "").trim();
+  let m = t.match(/^(\d{4})-(\d{2})-(\d{2})/); if(m) return `${m[1]}-${m[2]}-${m[3]}`;
+  m = t.match(/^(\d{1,2})[.\/-](\d{1,2})[.\/-](\d{4})$/); if(m) return `${m[3]}-${m[2].padStart(2,"0")}-${m[1].padStart(2,"0")}`;
+  return "";
+}
+function ocrTid(v){
+  const m = String(v ?? "").trim().match(/^(\d{1,2})[:.](\d{2})/);
+  return m && +m[1] < 24 && +m[2] < 60 ? `${m[1].padStart(2,"0")}:${m[2]}` : "";
+}
+// Forslag til formularen. Fra raa_data (OCR) når den findes; ellers nr og dato fra fejlbeskeden
+// ("nr 1682, dato 2026-09-27") eller billedets filnavn ("1682_faysal_..."). f.ocr = felter der kom fra OCR.
 function fejlForslag(r, navn){
   const tekst = String(r.fejl_besked || "");
   let nr = (tekst.match(/\bnr\.?\s*[:#]?\s*(\d{3,5})\b/i) || [])[1] || "";
   if(!nr){ const fra = String(navn || "").split("_")[0]; if(/^\d{3,5}$/.test(fra)) nr = fra; }
   let dato = (tekst.match(/\b(\d{4}-\d{2}-\d{2})\b/) || [])[1] || "";
   if(!dato){ const m = tekst.match(/\b(\d{1,2})[.\/-](\d{1,2})[.\/-](\d{4})\b/); if(m) dato = `${m[3]}-${m[2].padStart(2,"0")}-${m[1].padStart(2,"0")}`; }
-  return { nr, dato };
+  const f = { nr, dato, vs:"", ve:"", ind:"", ovf:"", bro:"0", ocr:{} };
+  const raa = raaData(r);
+  if(raa){
+    const saet = (k, v) => { if(v !== ""){ f[k] = v; f.ocr[k] = true; } };
+    const ocrNr = String(raa.slutrapport_nr ?? "").trim();
+    saet("nr", /^\d{3,5}$/.test(ocrNr) ? ocrNr : "");
+    saet("dato", ocrDato(raa.dato));
+    saet("vs", ocrTid(raa.vagt_start));
+    saet("ve", ocrTid(raa.vagt_slut));
+    saet("ind", ocrTal(raa.indkort));
+    saet("ovf", ocrTal(raa.overfort));
+    saet("bro", ocrTal(raa.bro_faerge));
+  }
+  return f;
 }
 function udfyldForm(r, url){
   const id = escAttr(r.id);
@@ -657,8 +715,10 @@ function udfyldForm(r, url){
   const f = fejlForslag(r, kort.navn);
   const valgt = DRIVERS.find(d=>d.toLowerCase() === String(r.chauffor||"").trim().toLowerCase()) || String(r.chauffor||"").trim();
   const navne = [...new Set([...DRIVERS, valgt].filter(Boolean))];
-  const felt = (label, input) => `<div><label>${label}</label>${input}</div>`;
-  const tal = (key, label, v) => felt(label, `<input type="number" step="0.01" inputmode="decimal" id="uf-${key}-${id}" value="${v}" oninput="udfyldDiff('${id}')">`);
+  const ocrTag = `<span class="ocr-tag" title="Læst af OCR – tjek mod bonen">OCR</span>`;
+  const felt = (label, input, key) => `<div><label>${label}${f.ocr[key] ? ocrTag : ""}</label>${input}</div>`;
+  const kl = key => f.ocr[key] ? ' class="ocr"' : "";
+  const tal = (key, label, v) => felt(label, `<input type="number" step="0.01" inputmode="decimal" id="uf-${key}-${id}"${kl(key)} value="${escAttr(v)}" oninput="udfyldDiff('${id}')">`, key);
   const titel = escAttr(`${r.chauffor||""} · fejlet upload`);
   return `<div class="udfyld hidden" id="udfyld-${id}">
     <div class="udfyld-grid">
@@ -666,14 +726,15 @@ function udfyldForm(r, url){
         ? `<img src="${escAttr(url)}" alt="Bonen" data-lightbox="${escAttr(url)}" data-titel="${titel}" onerror="this.replaceWith(Object.assign(document.createElement('div'),{className:'ret-billede-empty',textContent:'Intet billede'}))"><span class="hint">Tryk på billedet for zoom</span>`
         : `<div class="ret-billede-empty">Intet billede</div>`}</div>
       <div class="udfyld-felter">
-        ${felt("Chauffør", `<select id="uf-ch-${id}">${navne.map(n=>`<option${n===valgt?" selected":""}>${escAttr(n)}</option>`).join("")}</select>`)}
-        ${felt("Slutrapport nr", `<input type="text" inputmode="numeric" id="uf-nr-${id}" value="${escAttr(f.nr)}" placeholder="fx 1682">`)}
-        ${felt("Dato (vagt start)", `<input type="date" id="uf-dato-${id}" value="${escAttr(f.dato)}">`)}
-        ${felt("Vagt start", `<input type="time" id="uf-vs-${id}">`)}
-        ${felt("Vagt slut", `<input type="time" id="uf-ve-${id}">`)}
-        ${tal("ind", "Indkørt", "")}
-        ${tal("ovf", "Overført", "")}
-        ${tal("bro", "Bro / færge", "0")}
+        ${Object.keys(f.ocr).length ? `<div class="udfyld-ocr-note">Gule felter er OCR-forslag — tjek dem mod bonen og ret dem, hvis de er forkerte.</div>` : ""}
+        ${felt("Chauffør", `<select id="uf-ch-${id}" onchange="planlaegDublet('${id}')">${navne.map(n=>`<option${n===valgt?" selected":""}>${escAttr(n)}</option>`).join("")}</select>`)}
+        ${felt("Slutrapport nr", `<input type="text" inputmode="numeric" id="uf-nr-${id}"${kl("nr")} value="${escAttr(f.nr)}" placeholder="fx 1682" oninput="planlaegDublet('${id}')">`, "nr")}
+        ${felt("Dato (vagt start)", `<input type="date" id="uf-dato-${id}"${kl("dato")} value="${escAttr(f.dato)}" oninput="visDublet('${id}')">`, "dato")}
+        ${felt("Vagt start", `<input type="time" id="uf-vs-${id}"${kl("vs")} value="${escAttr(f.vs)}">`, "vs")}
+        ${felt("Vagt slut", `<input type="time" id="uf-ve-${id}"${kl("ve")} value="${escAttr(f.ve)}">`, "ve")}
+        ${tal("ind", "Indkørt", f.ind)}
+        ${tal("ovf", "Overført", f.ovf)}
+        ${tal("bro", "Bro / færge", f.bro)}
         <div class="udfyld-diff"><span>Difference (afregn) = indkørt − overført − bro</span><b id="uf-diff-${id}">–</b></div>
         <div class="udfyld-fejl" id="uf-fejl-${id}"></div>
         <div class="udfyld-knapper">
@@ -705,6 +766,66 @@ function udfyldDiff(id){
   const ind = ufTal("ind", id), ovf = ufTal("ovf", id), bro = ufTal("bro", id) ?? 0;
   const el = $("uf-diff-"+id); if(!el) return;
   el.textContent = (ind === null || ovf === null || [ind, ovf, bro].some(isNaN)) ? "–" : kr(ind - ovf - bro) + " kr.";
+  visDublet(id);
+}
+
+/* ===== Dublet på fejlkortet: findes chauffør + nr allerede i slutrapporter? ===== */
+const kortTal = n => Number(n).toLocaleString("da-DK", {minimumFractionDigits:0, maximumFractionDigits:2});
+const kortDato = d => { const [y, m, dd] = String(d || "").slice(0, 10).split("-").map(Number); return y ? `${dd}/${m}` : ""; };
+const oerer = n => Math.round(Number(n) * 100);
+async function tjekDublet(id){
+  const k = FEJL_KORT.get(id); if(!k) return;
+  const ch = String($("uf-ch-"+id)?.value || "").trim(), nr = String($("uf-nr-"+id)?.value || "").trim();
+  const noegle = ch.toLowerCase() + "|" + nr;
+  k.dubNoegle = noegle;
+  let fundet = null;
+  if(ch && /^\d{3,5}$/.test(nr)){
+    try{ fundet = ((await rpc("find_slutrapport", {p_token:OWNER_TOKEN, p_chauffor:ch, p_slutrapport_nr:nr})) || [])[0] || null; }
+    catch(e){ fundet = null; }   // funktionen findes ikke endnu: Gem viser stadig databasens dublet-besked
+  }
+  if(k.dubNoegle !== noegle || FEJL_KORT.get(id) !== k) return;   // der er skrevet videre / kortene er genindlæst
+  k.dublet = fundet;
+  visDublet(id);
+}
+const dubTimere = new Map();
+function planlaegDublet(id){ clearTimeout(dubTimere.get(id)); dubTimere.set(id, setTimeout(()=>tjekDublet(id), 350)); }
+// Sammenlign kortets (evt. rettede) dato og beløb med den gemte række
+function visDublet(id){
+  const el = $("dub-"+id), k = FEJL_KORT.get(id); if(!el || !k) return;
+  const e = k.dublet;
+  if(!e){ el.className = "dublet hidden"; el.innerHTML = ""; return; }
+  const dato = String($("uf-dato-"+id)?.value || ""), ind = ufTal("ind", id), ovf = ufTal("ovf", id), bro = ufTal("bro", id) ?? 0;
+  const komplet = !!dato && ind !== null && ovf !== null && ![ind, ovf, bro].some(isNaN);
+  const ens = komplet && dato === String(e.dato).slice(0, 10) && oerer(ind) === oerer(e.indkort)
+    && oerer(ovf) === oerer(e.overfort) && oerer(bro) === oerer(e.bro_faerge || 0);
+  el.className = "dublet " + (!komplet ? "dublet-neutral" : ens ? "dublet-ens" : "dublet-anden");
+  el.innerHTML = `<div class="dublet-findes">Findes allerede: ${kortDato(e.dato)}, indkørt ${kortTal(e.indkort)}, overført ${kortTal(e.overfort)}</div>
+    <div class="dublet-tekst">${!komplet ? "Udfyld dato og beløb for at sammenligne med den gemte vagt."
+      : ens ? "✓ Samme vagt er allerede gemt — marker som rettet"
+      : "⚠ Samme nummer, anden vagt — ét af numrene er sandsynligvis fejllæst."}</div>
+    <div class="dublet-knapper">
+      <button type="button" class="btn-aabn-ret" onclick="aabnIRet('${escAttr(id)}')">Åbn i Ret</button>
+      ${ens ? `<button type="button" class="btn-ens" onclick="markerRettet('${escAttr(id)}')">Marker som rettet</button>` : ""}
+    </div>`;
+}
+// "Åbn i Ret": vis chaufføren og regnskabsmåneden for den gemte række, rul til den og åbn Ret (med billedet)
+async function aabnIRet(fejlId){
+  const e = FEJL_KORT.get(fejlId)?.dublet; if(!e) return;
+  const ch = DRIVERS.find(d=>d.toLowerCase() === String(e.chauffor||"").trim().toLowerCase()) || String(e.chauffor||"").trim();
+  if(![...$("driver").options].some(o=>o.value === ch)) $("driver").add(new Option(ch, ch));
+  $("driver").value = ch;
+  const rm = regnskabsmaaned(String(e.dato).slice(0, 10));
+  if(rm && ![...$("month").options].some(o=>o.value === rm)){
+    const m = [...$("month").options].map(o=>o.value).concat(rm).sort().reverse();
+    $("month").innerHTML = m.map(x=>`<option>${x}</option>`).join("");
+  }
+  if(rm) $("month").value = rm;
+  await refresh();
+  const row = $("row-"+e.id);
+  if(!row){ alert("Den gemte række blev ikke fundet i tabellen."); return; }
+  aabnRet(e.id);
+  row.scrollIntoView({block:"center"});
+  row.classList.add("fremhaev"); setTimeout(()=>row.classList.remove("fremhaev"), 2500);
 }
 // Regnskabsmåned: dag 28 og frem tæller til næste måned
 function regnskabsmaaned(dato){
@@ -733,6 +854,9 @@ async function gemUdfyld(id){
     fejlEl.textContent = e.status === 404
       ? "Funktionen opret_slutrapport findes ikke i databasen endnu (migrationen er ikke kørt)."
       : (e.besked || e.message || "Kunne ikke gemme.");
+    if(e.hint === "dublet" && e.detaljer){   // databasen sender den eksisterende række med
+      try{ k.dublet = JSON.parse(e.detaljer); visDublet(id); }catch(_){}
+    }
     knap.disabled = false; knap.textContent = "Gem";
     return;
   }
@@ -766,6 +890,7 @@ async function loadFejl(){
           <span style="font-weight:400;color:var(--muted);font-size:13px">${new Date(r.modtaget).toLocaleString("da-DK")}</span>
         </div>
         <div style="color:var(--red);font-size:14px;margin:4px 0">${r.fejl_besked||"Kunne ikke behandles"}</div>
+        <div class="dublet hidden" id="dub-${escAttr(r.id)}"></div>
         ${r.filename?`<div style="font-size:12px;color:var(--muted)">Fil: ${r.filename}</div>`:""}
         ${fejlUrl(r)?`<div style="margin-top:8px;display:flex;align-items:center;gap:8px"><img class="thumb" src="${escAttr(fejlUrl(r))}" alt="Billede" data-lightbox="${escAttr(fejlUrl(r))}" data-titel="${escAttr((r.chauffor||"")+" · fejlet upload")}" title="Klik for at se billedet" onerror="this.parentElement.style.display='none'"><a class="billede-link" href="${escAttr(fejlUrl(r))}" data-lightbox="${escAttr(fejlUrl(r))}" data-titel="${escAttr((r.chauffor||"")+" · fejlet upload")}">📷 Se</a></div>`:""}
         <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">
@@ -774,6 +899,7 @@ async function loadFejl(){
         </div>
         ${udfyldForm(r, fejlUrl(r))}
       </div>`).join("");
+    aktive.forEach(r=>tjekDublet(r.id));   // slå dubletter op for hvert kort (nr fra OCR/fejlbesked)
   }catch(e){ $("fejlCard").style.display="none"; }
 }
 async function markerRettet(id){
