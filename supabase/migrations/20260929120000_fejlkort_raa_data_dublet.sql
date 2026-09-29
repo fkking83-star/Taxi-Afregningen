@@ -1,6 +1,4 @@
--- ================================================================================================
--- IKKE KØRT. Når den er kørt i SQL Editor: flyt filen til supabase/migrations/ uændret.
--- ================================================================================================
+-- Kørt i live-databasen 29/9-2026 (SQL Editor).
 -- Fejlkort i dashboardet: OCR-tallene gemmes på fejl-rækken, og dubletter vises direkte på kortet.
 -- Rører IKKE lønberegningen (v_data, v_afregning, v_lonseddel, satser) eller slutrapporter-tabellen.
 

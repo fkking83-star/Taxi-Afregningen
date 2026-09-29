@@ -1,12 +1,13 @@
-// Forslaget supabase/pending/20260929120000_fejlkort_raa_data_dublet.sql oven på hele kæden (= live 29/9-2026):
+// Migrationen supabase/migrations/20260929120000_fejlkort_raa_data_dublet.sql (kørt live 29/9-2026). Kæden bygges op til
+// migrationen før, og den køres derefter oven på testdata:
 // raa_data på fejl-rækker, find_slutrapport og dublet-svar fra opret_slutrapport. Lønberegningen urørt.
 import { readFileSync } from 'fs';
 import { bygFraMigrationer } from '../hjaelpere/skema.mjs';
 let f = 0; const check = (ok, m) => { console.log(`${ok ? 'PASS' : 'FAIL'}  ${m}`); if (!ok) f++; };
-const FORSLAG = readFileSync(new URL('../../supabase/pending/20260929120000_fejlkort_raa_data_dublet.sql', import.meta.url), 'utf8');
+const FORSLAG = readFileSync(new URL('../../supabase/migrations/20260929120000_fejlkort_raa_data_dublet.sql', import.meta.url), 'utf8');
 const SIKKERHED = readFileSync(new URL('../../supabase/pending/20260929100000_luk_direkte_adgang.sql', import.meta.url), 'utf8');
 
-const { db, fejl } = await bygFraMigrationer();
+const { db, fejl } = await bygFraMigrationer({ til: '20260928120000_opret_slutrapport.sql' });
 check(!fejl, 'Kæden bygger' + (fejl ? ': ' + fejl.besked : ''));
 const q = async (s, p = []) => (await db.query(s, p)).rows;
 const sorteret = o => o && JSON.stringify(Object.fromEntries(Object.entries(o).sort()));   // jsonb gemmer nøglerne i sin egen rækkefølge

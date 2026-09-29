@@ -26,7 +26,10 @@ for (const [type, navn, detalje] of csv(readFileSync(new URL('../data/live_skema
   if (type === 'funktion') LIVE.funktioner[navn.split('(')[0]] = { security_definer: detalje.startsWith('definer'), md5: detalje.match(/md5=(\w+)/)[1] };
 }
 
-const { db, fejl } = await bygFraMigrationer();
+// Øjebliksbilledet er taget, før 20260929120000 blev kørt live; kæden bygges derfor til og med den sidste
+// migration, der var kørt dengang. Tag et nyt øjebliksbillede og flyt grænsen, når nye migrationer er kørt.
+const SNAPSHOT_TIL = '20260928120000_opret_slutrapport.sql';
+const { db, fejl } = await bygFraMigrationer({ til: SNAPSHOT_TIL });
 check(!fejl, 'Hele kæden bygger' + (fejl ? `: ${fejl.fil} -> ${fejl.besked}` : ''));
 if (fejl) { console.log(`\n${f} FEJL`); process.exit(1); }
 const q = async s => (await db.query(s)).rows;
