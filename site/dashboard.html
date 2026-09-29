@@ -92,6 +92,17 @@
   .dublet-knapper button{padding:8px 12px;border-radius:8px;font-size:14px;cursor:pointer;border:1px solid var(--line);background:#fff}
   .dublet-knapper .btn-ens{background:var(--green);color:#fff;border-color:var(--green);font-weight:700}
   tr.fremhaev td{background:#FFF6D9 !important}
+  /* Ændringslog med Fortryd */
+  .aendring{border-bottom:1px solid #F0F1F4;padding:10px 0;font-size:14px}
+  .aendring:last-child{border-bottom:none}
+  .aendring-top{display:flex;flex-wrap:wrap;gap:2px 8px;align-items:baseline}
+  .aendring-tid{margin-left:auto;color:var(--muted);font-size:12px}
+  .aendring-tekst{margin-top:2px;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
+  .aendring.fortrudt{opacity:.6}
+  .aendring-status{color:var(--muted);font-size:12px}
+  .btn-fortryd{margin-top:6px;border:1px solid var(--line);background:#fff;border-radius:8px;padding:6px 12px;font-size:13px;cursor:pointer}
+  .aendring-fejl{color:var(--red);font-size:13px;font-weight:600;margin-top:4px}
+  .aendring-fejl:empty{display:none}
   @media (max-width:699px){
     .udfyld-grid{flex-direction:column}
     .udfyld-billede{flex:none;width:100%}
@@ -99,6 +110,8 @@
     .udfyld-felter{width:100%;grid-template-columns:repeat(2,minmax(0,1fr))}
     .udfyld-knapper button{flex:1}
     .dublet-knapper button{flex:1;padding:11px 12px;font-size:15px}
+    .btn-fortryd{padding:11px 18px;font-size:15px}
+    .aendring-tid{margin-left:0;width:100%}
   }
   /* Sidepanel (ikke fuldskærm), så Ret-felterne kan bruges mens billedet er åbent. Under 900px: fuld skærm */
   #lightbox{position:fixed;top:0;right:0;bottom:0;width:min(50vw,640px);background:#14181F;z-index:1000;display:flex;flex-direction:column;box-shadow:-8px 0 30px rgba(0,0,0,.25)}
@@ -160,13 +173,19 @@
     <div id="fejlListe"></div>
   </div>
 
+  <div class="card" id="aendringCard" style="display:none">
+    <h2>Seneste ændringer</h2>
+    <div id="aendringListe"></div>
+    <div class="note">"Ret" og "Udfyld og godkend" gemmes med værdierne før og efter. Fortryd virker, så længe rækken ikke er ændret siden — ellers fortrydes den nyeste ændring først.</div>
+  </div>
+
   <div class="card">
     <h2>Slutrapporter (til dobbelt-tjek)</h2>
     <div id="rapporter"><div class="empty">—</div></div>
     <div class="note">Røde rækker = mistænkt dublet (samme dato og beløb). Ret/slet i Supabase hvis det er en dublet.
       Gult ⚠ nummer = passer ikke med nogen bils nummerrække (alle chaufførers vagter tæller med, da bilerne deles) — fx OCR-forveksling af 18/19. Hold musen over for forslag, ret via Ret.</div>
   </div>
-  <p style="text-align:center;font-size:11px;color:#B7BCC6;margin:14px 0 0">dashboard v2026-09-29b</p>
+  <p style="text-align:center;font-size:11px;color:#B7BCC6;margin:14px 0 0">dashboard v2026-09-29c</p>
 </main>
 
 <div id="lightbox" class="hidden" role="dialog" aria-label="Billede af slutrapport">
@@ -653,6 +672,7 @@ async function gemRet(id){
     }
     lukRet(id);
     refresh();
+    loadAendringer();
   }catch(e){ alert("Kunne ikke gemme rettelsen: " + e.message); }
 }
 
@@ -865,7 +885,7 @@ async function gemUdfyld(id){
   if([...$("driver").options].some(o=>o.value === data.p_chauffor)) $("driver").value = data.p_chauffor;
   const rm = regnskabsmaaned(data.p_dato);
   if([...$("month").options].some(o=>o.value === rm)) $("month").value = rm;
-  await Promise.all([loadFejl(), refresh()]);
+  await Promise.all([loadFejl(), refresh(), loadAendringer()]);
 }
 
 async function loadFejl(){
@@ -878,7 +898,7 @@ async function loadFejl(){
     ]);
     const fejlBillede = new Map((billeder||[]).filter(b=>b && b.navn).map(b=>[b.fejl_id, billedUrl(b.bucket, b.navn)]));
     const aktive = (rows||[]).filter(r=>r.status==="ny");
-    if(!aktive.length){ $("fejlCard").style.display="none"; return; }
+    if(!aktive.length){ $("fejlCard").style.display="none"; $("fejlListe").innerHTML = ""; FEJL_KORT.clear(); return; }
     $("fejlCard").style.display="block";
     const fejlUrl = r => r.billede_url ? String(r.billede_url).trim() : (fejlBillede.get(r.id) || "");
     FEJL_KORT.clear();
@@ -902,6 +922,61 @@ async function loadFejl(){
     aktive.forEach(r=>tjekDublet(r.id));   // slå dubletter op for hvert kort (nr fra OCR/fejlbesked)
   }catch(e){ $("fejlCard").style.display="none"; }
 }
+/* ===== Ændringslog: "Ret" og "Udfyld og godkend" gemmes med før/efter og kan fortrydes ===== */
+const AEND_HANDLING = { ret:"Ret", opret:"Udfyld og godkend", fortryd:"Fortrudt" };
+const AEND_FELTER = [["slutrapport_nr","nr"], ["dato","dato"], ["indkort","indkørt"], ["overfort","overført"],
+                     ["kontant","kontant"], ["bro_faerge","bro/færge"], ["vagt_start","vagt start"], ["vagt_slut","vagt slut"]];
+const AEND_BELOEB = ["indkort", "overfort", "kontant", "bro_faerge"];
+const AENDRINGER = new Map();   // log-id -> log-række
+const aendVaerdi = (k, v) => v === null || v === undefined || v === "" ? "–"
+  : AEND_BELOEB.includes(k) ? kortTal(v) : k === "dato" ? kortDato(v) : String(v);
+// Hvilke felter er ændret fra a til b, fx "indkørt 3.440 → 3.450, nr 1860 → 1861"
+function aendForskel(a, b){
+  return AEND_FELTER.filter(([k]) => AEND_BELOEB.includes(k)
+      ? oerer(a[k] ?? 0) !== oerer(b[k] ?? 0) : String(a[k] ?? "") !== String(b[k] ?? ""))
+    .map(([k, navn]) => `${navn} ${aendVaerdi(k, a[k])} → ${aendVaerdi(k, b[k])}`).join(", ");
+}
+function aendTekst(a){
+  const f = a.foer || {}, e = a.efter || {};
+  if(a.handling === "opret") return `oprettet: ${kortDato(e.dato)}, indkørt ${kortTal(e.indkort)}, overført ${kortTal(e.overfort)}`;
+  if(a.handling === "fortryd" && !a.efter) return `slettede rækken (${kortDato(f.dato)}, indkørt ${kortTal(f.indkort)}) — fejlkortet er tilbage`;
+  return aendForskel(f, e) || "ingen synlig ændring";
+}
+async function loadAendringer(){
+  const card = $("aendringCard"); if(!card) return;
+  let rows;
+  try{ rows = await rpc("hent_aendringer", {p_token:OWNER_TOKEN, p_antal:20}); }
+  catch(e){ card.style.display = "none"; return; }   // funktionen findes ikke endnu i databasen
+  AENDRINGER.clear();
+  if(!rows || !rows.length){ card.style.display = "none"; return; }
+  card.style.display = "block";
+  $("aendringListe").innerHTML = rows.map(a=>{
+    AENDRINGER.set(Number(a.id), a);
+    const r = a.efter || a.foer || {};
+    return `<div class="aendring${a.fortrudt_tid ? " fortrudt" : ""}" id="aend-${Number(a.id)}">
+      <div class="aendring-top"><b>${AEND_HANDLING[a.handling] || escAttr(a.handling)}</b>
+        <span>${escAttr(r.chauffor || "")} · nr ${escAttr(r.slutrapport_nr || "")}</span>
+        <span class="aendring-tid">${new Date(a.tidspunkt).toLocaleString("da-DK")} · ${escAttr(a.hvem || "")}</span></div>
+      <div class="aendring-tekst">${escAttr(aendTekst(a))}${a.fortrudt_tid
+        ? ` <span class="aendring-status">(fortrudt ${new Date(a.fortrudt_tid).toLocaleString("da-DK")})</span>` : ""}</div>
+      ${a.kan_fortrydes ? `<button type="button" class="btn-fortryd" onclick="fortrydAendring(${Number(a.id)})">Fortryd</button>` : ""}
+      <div class="aendring-fejl" id="aend-fejl-${Number(a.id)}"></div>
+    </div>`;
+  }).join("");
+}
+async function fortrydAendring(id){
+  const a = AENDRINGER.get(Number(id)); if(!a) return;
+  const r = a.efter || {};
+  const spm = a.handling === "opret"
+    ? `Fortryd godkendelsen?\n\nRækken (${r.chauffor || ""}, nr ${r.slutrapport_nr || ""}, ${kortDato(r.dato)}) slettes, og fejlkortet kommer tilbage.`
+    : `Fortryd rettelsen?\n\nRækken (${r.chauffor || ""}, nr ${r.slutrapport_nr || ""}) sættes tilbage: ${aendForskel(a.efter || {}, a.foer || {})}.`;
+  if(!confirm(spm)) return;
+  const fejlEl = $("aend-fejl-"+id);
+  try{ await rpc("fortryd_aendring", {p_token:OWNER_TOKEN, p_log_id:Number(id)}); }
+  catch(e){ if(fejlEl) fejlEl.textContent = e.status === 404 ? "Fortryd findes ikke i databasen endnu (migrationen er ikke kørt)." : (e.besked || e.message); return; }
+  await Promise.all([loadAendringer(), loadFejl(), refresh()]);
+}
+
 async function markerRettet(id){
   try{ await rpc("marker_fejl", {p_token:OWNER_TOKEN, p_id:id, p_status:"rettet"}); loadFejl(); }catch(e){}
 }
@@ -961,6 +1036,7 @@ $("month").addEventListener("change", refresh);
   await fillMonths();
   refresh();
   loadFejl();
+  loadAendringer();
 })();
 </script>
 </body>
