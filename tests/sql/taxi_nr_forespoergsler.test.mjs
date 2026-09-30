@@ -4,8 +4,8 @@ import { readFileSync } from 'fs';
 import { bygFraMigrationer } from '../hjaelpere/skema.mjs';
 let f = 0; const check = (ok, m) => { console.log(`${ok ? 'PASS' : 'FAIL'}  ${m}`); if (!ok) f++; };
 const Q = n => readFileSync(new URL(`../../supabase/forespoergsler/${n}.sql`, import.meta.url), 'utf8');
-const Q1 = Q('taxi_nr_1_oversigt'), Q2 = Q('taxi_nr_2_uden_for_omraaderne');
-for (const [n, sql] of [['1', Q1], ['2', Q2]]) {
+const Q1 = Q('taxi_nr_1_oversigt'), Q2 = Q('taxi_nr_2_uden_for_omraaderne'), Q3 = Q('taxi_nr_3_mulige_fejllaeste_dubletter');
+for (const [n, sql] of [['1', Q1], ['2', Q2], ['3', Q3]]) {
   const uden = sql.replace(/--.*$/gm, '');
   check(!/\b(insert|update|delete|drop|alter|create|truncate|grant|revoke)\b/i.test(uden) && uden.trim().split(';').filter(x => x.trim()).length === 1, `Forespørgsel ${n}: ét select, ingen skrive-kommandoer`);
 }
@@ -56,4 +56,14 @@ await db.exec(`insert into slutrapporter (dato, slutrapport_nr, chauffor, indkor
 const o2 = await q(Q1), u2 = await q(Q2);
 check(Number(o2.find(x => x.taxi_nr === '001-7144').antal_raekker) === 4 && u2.filter(x => x.nr === '1337').length === 2, 'Chaufføren spiller ingen rolle: 1101 hos en ny chauffør er stadig 001-7144, 1337 er uden for områderne hos begge');
 check((await q(`select count(*)::int n from slutrapporter`))[0].n === total + 2, 'Forespørgslerne har ikke ændret data');
+// Forespørgsel 3: samme beløb, forlæst nummer og dato (som Faysals 1635 -> 1035 og 1639 -> 1937 i live)
+await db.exec(`insert into slutrapporter (dato, slutrapport_nr, chauffor, indkort, overfort) values
+  ('2026-09-04', '1635', 'Faysal', 3034, 3022), ('2023-09-03', '1035', 'Faysal', 3034, 3022),
+  ('2026-09-06', '1639', 'Faysal', 2430, 2430), ('2025-09-05', '1937', 'Faysal', 2430, 2430),
+  ('2026-09-07', '1640', 'Faysal', 2660, 2198)`);
+const dub = await q(Q3);
+const ægte = dub.filter(x => Number(x.indkort) !== 1000);   // testdataene har mange 1000/1000-rækker, som naturligt også er "samme beløb"
+check(ægte.map(x => x.nr).sort().join() === '1035,1635,1639,1937', 'Q3: finder de to par med samme beløb og forskelligt nummer/dato (1635/1035 og 1639/1937)');
+check(dub.filter(x => x.indkort == 3034).map(x => x.maaned).sort().join() === '2023-09,2026-09', 'Q3: viser måneden for begge rækker i et par');
+check(!dub.some(x => x.nr === '1640'), 'Q3: en række med unikke beløb er ikke med');
 console.log(f ? `\n${f} FEJL` : '\nALLE TESTS BESTÅET'); process.exit(f ? 1 : 0);
