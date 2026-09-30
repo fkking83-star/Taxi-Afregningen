@@ -21,5 +21,12 @@ if (!fejl) {
                  insert into slutrapporter (dato, slutrapport_nr, chauffor, indkort, overfort) values ('2026-09-10', '1001', 'Test', 1000, 900)`);
   const l = (await q(`select antal_ture, andel_brutto from v_lonseddel where chauffor = 'Test'`))[0];
   check(l && Number(l.antal_ture) === 1 && Number(l.andel_brutto) === 500, 'v_lonseddel regner på det byggede skema');
+  // Efter lukningen (20260930100000) har den offentlige nøgle ingen direkte adgang til tabeller, views eller sekvenser
+  const aabne = await q(`select c.relname || ' ' || r.rolname || ' ' || a.privilege_type k from pg_class c
+    join pg_namespace n on n.oid = c.relnamespace cross join lateral aclexplode(c.relacl) a join pg_roles r on r.oid = a.grantee
+    where n.nspname = 'public' and r.rolname in ('anon', 'authenticated')`);
+  check(aabne.length === 0, 'Ingen direkte rettigheder for anon/authenticated efter kæden' + (aabne.length ? ': ' + aabne.map(x => x.k).join(', ') : ''));
+  const rls = (await q(`select bool_and(relrowsecurity) b from pg_class where relnamespace = 'public'::regnamespace and relname in ('satser', 'slutrapporter')`))[0].b;
+  check(rls === true, 'RLS er slået til på satser og slutrapporter efter kæden');
 }
 console.log(f ? `\n${f} FEJL` : '\nALLE TESTS BESTÅET'); process.exit(f ? 1 : 0);

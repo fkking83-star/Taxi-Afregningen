@@ -1,5 +1,5 @@
 -- ================================================================================================
--- SUPPLEMENT TIL SIKKERHEDSKOPIEN (sikkerhed_backup.rettigheder_20260929). IKKE KØRT.
+-- SUPPLEMENT TIL SIKKERHEDSKOPIEN (sikkerhed_backup.rettigheder_20260929). Kørt live 30/9-2026 (kopien har nu 84 rækker).
 -- Hvorfor: kopien blev taget 29/9 21:24, efter at tabellernes rettigheder allerede var fjernet
 -- (en tidligere version af lukningen uden kopi). Den indeholder derfor kun sekvenserne (12 rækker),
 -- og tilbageføringen kan ikke åbne tabellerne igen. Her tilføjes anons rettigheder, som de stod
