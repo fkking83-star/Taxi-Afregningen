@@ -1,8 +1,6 @@
--- ================================================================================================
--- IKKE KØRT. Vist for ejeren 30/9-2026; køres først efter godkendelse af FØR/EFTER-tallene (punkt 0.5).
--- Når den er kørt i SQL Editor: flyt filen til supabase/migrations/ uden denne overskrift.
--- Fortryd: supabase/tilbagefoering/20260930110000_kontant_er_afregn.sql
--- ================================================================================================
+-- Kørt i live-databasen 30/9-2026 (SQL Editor). Kontrol bagefter for 2026-09: Adan 55.254,00, Faysal 33.976,00,
+-- Fuad 48.182,00 og Qaalid 50.128,88 — alle fire som godkendt af ejeren.
+-- Fortryd med det samme: supabase/tilbagefoering/20260930110000_kontant_er_afregn.sql
 -- Lønsedlens kontant = afregn = indkørt − overført − bro (summeret pr. chauffør og regnskabsmåned).
 -- Udbetaling = andel − afregn. Bro trækkes IKKE fra en ekstra gang, den er allerede med i afregn.
 -- Før: kontant var summen af kolonnen slutrapporter.kontant (det Make gemte pr. række), og udbetaling = andel − kontant − bro.

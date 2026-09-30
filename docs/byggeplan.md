@@ -23,7 +23,7 @@ kun beder ejeren om ét tryk, når noget ikke går op. **Ingen forkert løn må 
 | 0.2 | **Nye tokens** til ejer og chauffører (de gamle var læsbare før lockdown) + nye links | 🟩 | Gamle links virker ikke mere |
 | 0.3 | Fjern `OWNER_TOKEN_DEFAULT` fra dashboard.html; kræv `?k=` | 🟦 | Kildekoden indeholder ingen koder |
 | 0.4 | Skift alle delte nøgler: Gmail, OpenAI, service_role, `sbp_`, DB-password — opdatér i Make | 🟨 | Gamle nøgler er ugyldige |
-| 0.5 | Lønsedlens **kontant = afregn** (indkørt − overført − bro), med FØR/EFTER pr. chauffør | 🟩 | Tal godkendt af Fahad |
+| 0.5 | Lønsedlens **kontant = afregn** (indkørt − overført − bro), med FØR/EFTER pr. chauffør | 🟩 | Tal godkendt af Fahad ✓ (30/9) |
 | 0.6 | Make: `raa_data` i HTTP 110 og 121 (halvfærdigt) | 🟨 | Fejlkort forudfyldes med OCR-tal |
 | 0.7 | Migration `ocr_slutrapport_nr` (billedet forsvinder ikke ved Ret) | 🟩 | Billede følger rækken |
 | 0.8 | Backup: dagligt eksport af databasen (gratis plan har ingen automatisk gendannelse) | 🟦 + 🟨 | Gendannelse er afprøvet én gang |
@@ -141,6 +141,6 @@ Positionering: konkurrenter sælger drift (kort, vognløb). Vi sælger **lønafr
 |---|---|
 | Lockdown (luk_direkte_adgang) | Kørt live 30/9, ligger i `supabase/migrations/20260930100000_luk_direkte_adgang.sql` |
 | 0.1 | Afventer Fahads test (anon-nøgle blokeret, dashboard, kvittering, Make) |
-| 0.3 | Bygget og pushet (dashboard v2026-09-30a), tests grønne (480 tjek). Ikke merget til `main` endnu |
-| 0.5 | FØR/EFTER godkendt af Fahad afventer; migrationen ligger som forslag i `supabase/pending/20260930110000_kontant_er_afregn.sql` (ikke kørt). Fuads dublet 1112 fjernet, Faysals nr 1674 rettet til 0 |
+| 0.3 | Bygget og pushet (dashboard v2026-09-30a), tests grønne. Ikke merget til `main` endnu (venter på 0.1-testene) |
+| 0.5 | Gjort 30/9: kontant = afregn på lønsedlen, kørt live (`migrations/20260930110000_kontant_er_afregn.sql`); kontrol for 2026-09 OK for alle fire chauffører. Fuads dublet 1112 fjernet, Faysals nr 1674 rettet til 0. Nødplan: `tilbagefoering/20260930110000_kontant_er_afregn.sql` |
 | 0.6 | Springes over (Make udfases) |

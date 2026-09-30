@@ -1,5 +1,5 @@
 -- ================================================================================================
--- NØDPLAN / TILBAGEFØRING af supabase/pending/20260930110000_kontant_er_afregn.sql.
+-- NØDPLAN / TILBAGEFØRING af supabase/migrations/20260930110000_kontant_er_afregn.sql (kørt live 30/9-2026).
 -- Kør KUN hvis noget går galt. Gendanner lønsedlens gamle regler: kontant = sum(slutrapporter.kontant), udbetaling = andel − kontant − bro.
 -- Det er IKKE en migration og skal ikke flyttes til migrations/.
 -- ================================================================================================

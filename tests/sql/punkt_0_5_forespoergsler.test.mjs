@@ -1,5 +1,6 @@
 // Punkt 0.5: de tre læseforespørgsler i supabase/forespoergsler/ (FØR/EFTER for kontant = afregn).
-// De er kun-læsning; her afprøves de på kendte tal, der er regnet efter i hånden.
+// De er kun-læsning; her afprøves de på kendte tal, der er regnet efter i hånden. Kæden bygges til og med lukningen
+// (før migrationen 20260930110000, der gør kontant = afregn), fordi FØR-tallene gælder den gamle lønseddel.
 import { readFileSync } from 'fs';
 import { bygFraMigrationer } from '../hjaelpere/skema.mjs';
 let f = 0; const check = (ok, m) => { console.log(`${ok ? 'PASS' : 'FAIL'}  ${m}`); if (!ok) f++; };
@@ -13,7 +14,7 @@ for (const [navn, sql] of [['1', Q1], ['2', Q2], ['3', Q3]]) {
     `Forespørgsel ${navn}: ét select, ingen skrive-kommandoer`);
 }
 
-const { db, fejl } = await bygFraMigrationer();
+const { db, fejl } = await bygFraMigrationer({ til: '20260930100000_luk_direkte_adgang.sql' });
 check(!fejl, 'Kæden bygger' + (fejl ? ': ' + fejl.besked : ''));
 const q = async (s, p = []) => (await db.query(s, p)).rows;
 await db.exec(`

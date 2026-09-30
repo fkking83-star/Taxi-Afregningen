@@ -1,12 +1,12 @@
-// Punkt 0.5: supabase/pending/20260930110000_kontant_er_afregn.sql — lønsedlens kontant = afregn, udbetaling = andel − afregn.
-// Kæden bygges med alle migrationer (inkl. lukningen); forslaget køres oven på testdata med de rigtige september-totaler.
+// Punkt 0.5: supabase/migrations/20260930110000_kontant_er_afregn.sql (kørt live 30/9-2026) — lønsedlens kontant = afregn, udbetaling = andel − afregn.
+// Kæden bygges til og med lukningen; migrationen køres derefter oven på testdata med de rigtige september-totaler.
 import { readFileSync } from 'fs';
 import { bygFraMigrationer } from '../hjaelpere/skema.mjs';
 let f = 0; const check = (ok, m) => { console.log(`${ok ? 'PASS' : 'FAIL'}  ${m}`); if (!ok) f++; };
 const fil = p => readFileSync(new URL('../../supabase/' + p, import.meta.url), 'utf8');
-const FORSLAG = fil('pending/20260930110000_kontant_er_afregn.sql'), TILBAGE = fil('tilbagefoering/20260930110000_kontant_er_afregn.sql');
+const FORSLAG = fil('migrations/20260930110000_kontant_er_afregn.sql'), TILBAGE = fil('tilbagefoering/20260930110000_kontant_er_afregn.sql');
 
-const { db, fejl } = await bygFraMigrationer();
+const { db, fejl } = await bygFraMigrationer({ til: '20260930100000_luk_direkte_adgang.sql' });
 check(!fejl, 'Kæden bygger' + (fejl ? ': ' + fejl.besked : ''));
 const q = async (s, p = []) => (await db.query(s, p)).rows;
 await db.exec(`
