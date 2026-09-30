@@ -61,7 +61,7 @@ async function setup(browser, opts, { uden } = {}) {
     if (u.startsWith('file://')) return route.continue();
     return route.fulfill({ status: 404, body: '' });
   });
-  await page.goto('file://' + path.join(__dirname, '..', '..', 'site', 'dashboard.html'));
+  await page.goto('file://' + path.join(__dirname, '..', '..', 'site', 'dashboard.html') + '?k=test');
   await page.waitForSelector('#fejlListe > div');
   await page.selectOption('#month', '2026-09');
   await page.waitForTimeout(200);

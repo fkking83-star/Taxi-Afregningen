@@ -7,6 +7,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Taxi Afregning">
 <meta name="theme-color" content="#14181F">
+<meta name="referrer" content="no-referrer">
 <title>Taxi afregning</title>
 <style>
   :root{--ink:#14181F;--bg:#F4F5F7;--card:#fff;--amber:#F5B301;--green:#1E7F53;
@@ -49,6 +50,7 @@
   .empty{color:var(--muted);text-align:center;padding:24px}
   .note{font-size:12px;color:var(--muted);margin-top:8px}
   .cfg{background:#FFF6D9;border:1px solid #F0D98A;color:#6B5600;border-radius:12px;padding:14px;font-size:14px;margin-bottom:18px}
+  body.ingen-kode main > :not(#kodeBox):not(.version){display:none}
   .hidden{display:none !important}
   .thumb{width:44px;height:44px;object-fit:cover;border-radius:8px;border:1px solid var(--line);cursor:zoom-in;display:block}
   .billede-mangler{color:var(--muted);font-size:12px}
@@ -139,6 +141,8 @@
 <body>
 <header><p style="margin:0;font-size:12px;color:#A7ADBA;text-transform:uppercase">Taxi & Flex 22 ApS</p><h1>🚕 Taxi afregning</h1></header>
 <main>
+  <div id="kodeBox" class="cfg" style="display:none"></div>
+
   <div id="cfg" class="cfg" style="display:none">
     Indsæt din <b>anon</b>-nøgle øverst i filen (linjen <code>SUPABASE_ANON_KEY</code>).
     Du finder den i Supabase → Project Settings → API → "anon public".
@@ -185,7 +189,7 @@
     <div class="note">Røde rækker = mistænkt dublet (samme dato og beløb). Ret/slet i Supabase hvis det er en dublet.
       Gult ⚠ nummer = passer ikke med nogen bils nummerrække (alle chaufførers vagter tæller med, da bilerne deles) — fx OCR-forveksling af 18/19. Hold musen over for forslag, ret via Ret.</div>
   </div>
-  <p style="text-align:center;font-size:11px;color:#B7BCC6;margin:14px 0 0">dashboard v2026-09-29c</p>
+  <p class="version" style="text-align:center;font-size:11px;color:#B7BCC6;margin:14px 0 0">dashboard v2026-09-30a</p>
 </main>
 
 <div id="lightbox" class="hidden" role="dialog" aria-label="Billede af slutrapport">
@@ -209,8 +213,7 @@
 /* ===================== OPSÆTNING — ret KUN denne ene linje ===================== */
 const SUPABASE_URL = "https://vehgabygvxnkrqsoazfs.supabase.co";
 const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZlaGdhYnlndnhua3Jxc29hemZzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODc5MzkzNjcsImV4cCI6MjEwMzUxNTM2N30.bJUEk5lH97cpoydPNsxSCx5niu96Wi022_ls1nmeFyw";   // anon public
-const OWNER_TOKEN_DEFAULT = "d159855a2b247ad35fc85d826e84eeb2";   // din ejer-kode (bruges hvis intet ?k= i linket)
-const OWNER_TOKEN = new URLSearchParams(location.search).get("k") || OWNER_TOKEN_DEFAULT;
+const OWNER_TOKEN = (new URLSearchParams(location.search).get("k") || "").trim();   // ejer-koden står KUN i linket (?k=)
 const FIRM = "Taxi & Flex 22 ApS";
 /* ================================================================================ */
 
@@ -259,11 +262,15 @@ async function hentLonsedler(m){
 function fillDrivers(){
   $("driver").innerHTML = DRIVERS.map(d=>`<option>${d}</option>`).join("");
 }
+function visKodeBesked(html){ $("kodeBox").innerHTML = html; $("kodeBox").style.display = "block"; }
+
 async function fillMonths(){
   let months = [];
   try{
     const rows = await rpc("hent_alle", {p_token:OWNER_TOKEN});
     months = [...new Set((rows||[]).map(r=>r.regnskabsmaaned))].filter(Boolean).sort().reverse();
+    // hent_alle giver intet (uden fejl) for en forkert kode
+    if(!(rows||[]).length) visKodeBesked(`<b>Ejer-koden i linket gav ingen data.</b> Tjek, at du har åbnet hele dit dashboard-link (med <code>?k=</code>), og at det ikke er et gammelt link.`);
   }catch(e){}
   if(months.length===0){ // fallback: seneste 12 måneder
     const now=new Date();
@@ -982,7 +989,8 @@ async function markerRettet(id){
 }
 
 async function refresh(){
-  if(!SUPABASE_ANON_KEY || !OWNER_TOKEN){ $("cfg").style.display="block"; return; }
+  if(!SUPABASE_ANON_KEY){ $("cfg").style.display="block"; return; }
+  if(!OWNER_TOKEN) return;
   const d=$("driver").value, m=$("month").value;
 
   // 1) Lønseddel + overblik (robust hentning — virker uanset hent_alle-version)
@@ -1031,7 +1039,12 @@ $("driver").addEventListener("change", refresh);
 $("month").addEventListener("change", refresh);
 
 (async function init(){
-  if(!SUPABASE_ANON_KEY || !OWNER_TOKEN){ $("cfg").style.display="block"; }
+  if(!SUPABASE_ANON_KEY){ $("cfg").style.display="block"; }
+  if(!OWNER_TOKEN){   // intet hentes uden ejer-kode
+    document.body.classList.add("ingen-kode");
+    visKodeBesked(`<b>Linket mangler ejer-koden.</b> Åbn dashboardet med dit personlige link, der slutter på <code>?k=</code> efterfulgt af ejer-koden. Gem linket som bogmærke eller på hjemmeskærmen — koden står ikke længere i selve siden.`);
+    return;
+  }
   fillDrivers();
   await fillMonths();
   refresh();
