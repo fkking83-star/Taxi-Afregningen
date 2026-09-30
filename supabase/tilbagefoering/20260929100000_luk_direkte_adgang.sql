@@ -1,5 +1,5 @@
 -- ================================================================================================
--- NØDPLAN / TILBAGEFØRING af supabase/pending/20260929100000_luk_direkte_adgang.sql.
+-- NØDPLAN / TILBAGEFØRING af supabase/migrations/20260930100000_luk_direkte_adgang.sql (kørt live 30/9-2026).
 -- Kør KUN hvis noget holder op med at virke efter lukningen. Åbner præcis som før lukningen:
 -- anon/authenticated får de rettigheder tilbage, der blev gemt i sikkerhed_backup.rettigheder_20260929,
 -- RLS slås fra på satser og slutrapporter igen, og lonseddel() kan kaldes igen.

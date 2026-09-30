@@ -4,11 +4,11 @@ import { readFileSync } from 'fs';
 import { bygFraMigrationer } from '../hjaelpere/skema.mjs';
 let f = 0; const check = (ok, m) => { console.log(`${ok ? 'PASS' : 'FAIL'}  ${m}`); if (!ok) f++; };
 const fil = p => readFileSync(new URL('../../supabase/' + p, import.meta.url), 'utf8');
-const LUK = fil('pending/20260929100000_luk_direkte_adgang.sql');
+const LUK = fil('migrations/20260930100000_luk_direkte_adgang.sql');
 const TILBAGE = fil('tilbagefoering/20260929100000_luk_direkte_adgang.sql');
 const SUPP = fil('tilbagefoering/20260929100000_supplement_kopi.sql');
 
-const { db, fejl } = await bygFraMigrationer();
+const { db, fejl } = await bygFraMigrationer({ til: '20260929130000_aendringslog.sql' });
 check(!fejl, 'Kæden bygger' + (fejl ? ': ' + fejl.besked : ''));
 const q = async (s, p = []) => (await db.query(s, p)).rows;
 // anons rettigheder live 29/9 (role_table_grants)
