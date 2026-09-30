@@ -51,7 +51,7 @@ Dette genererer migrationsfiler baseret på det nuværende skema (tabeller, RPC-
 
 ## Sikkerhed — læs før produktion
 
-- `dashboard.html` indeholder i dag en hardcodet `OWNER_TOKEN_DEFAULT`. Den bør fjernes, eller RLS-politikkerne bør ændres så et gyldigt token altid kræves — ellers kan enhver med adgang til kildekoden (view-source) se vognmandens ejer-token.
+- `dashboard.html` har ingen indbygget ejer-kode (fjernet i v2026-09-30a). Dashboardet åbnes kun med linket `dashboard.html?k=<ejer-token>`; uden `?k=` hentes intet. Den tidligere indbyggede kode har ligget offentligt og skiftes i punkt 0.2 i `docs/byggeplan.md`.
 - `SUPABASE_ANON_KEY` er offentlig by design, men det kræver at alle RPC-funktioner (`hent_alle`, `hent_ture`, `hent_kvittering`, `ret_slutrapport` m.fl.) selv validerer det medsendte token korrekt.
 - `MAKE_WEBHOOK_URL` i `index.html` er et offentligt endpoint uden validering — overvej en delt hemmelighed i form-dataen, valideret i Make-scenariet.
 
