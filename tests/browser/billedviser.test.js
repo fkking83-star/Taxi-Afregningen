@@ -50,7 +50,7 @@ async function setup(browser, opts, BILLEDE) {
     if (u.startsWith('file://')) return route.continue();
     return route.fulfill({ status: 404, body: '' });
   });
-  await page.goto('file://' + path.join(__dirname, '..', '..', 'site', 'dashboard.html'));
+  await page.goto('file://' + path.join(__dirname, '..', '..', 'site', 'dashboard.html') + '?k=test');
   await page.selectOption('#driver', 'Qaalid');
   await page.waitForSelector('#row-q2');
   await page.waitForSelector('#row-q2 a[data-lightbox]');
@@ -239,7 +239,7 @@ const waitImg = page => page.waitForFunction(() => { const i = document.getEleme
       if (u.startsWith('file://')) return route.continue();
       return route.fulfill({ status: 404, body: '' });
     });
-    await page.goto('file://' + path.join(__dirname, '..', '..', 'site', 'dashboard.html'));
+    await page.goto('file://' + path.join(__dirname, '..', '..', 'site', 'dashboard.html') + '?k=test');
     await page.selectOption('#driver', 'Qaalid');
     await page.waitForSelector('#row-q2');
     await page.waitForTimeout(300);
