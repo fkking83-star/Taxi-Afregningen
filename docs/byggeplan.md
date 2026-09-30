@@ -142,5 +142,5 @@ Positionering: konkurrenter sælger drift (kort, vognløb). Vi sælger **lønafr
 | Lockdown (luk_direkte_adgang) | Kørt live 30/9, ligger i `supabase/migrations/20260930100000_luk_direkte_adgang.sql` |
 | 0.1 | Afventer Fahads test (anon-nøgle blokeret, dashboard, kvittering, Make) |
 | 0.3 | Bygget og pushet (dashboard v2026-09-30a), tests grønne (480 tjek). Ikke merget til `main` endnu |
-| 0.5 | Næste |
+| 0.5 | FØR/EFTER godkendt af Fahad afventer; migrationen ligger som forslag i `supabase/pending/20260930110000_kontant_er_afregn.sql` (ikke kørt). Fuads dublet 1112 fjernet, Faysals nr 1674 rettet til 0 |
 | 0.6 | Springes over (Make udfases) |
