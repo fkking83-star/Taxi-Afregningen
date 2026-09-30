@@ -39,10 +39,11 @@ index.html ──► Edge Function "modtag-slutrapport"
 | dato inden for 60 dage, ikke i fremtiden | til_godkendelse |
 | nr 3–5 cifre, starter ikke med 0 | til_godkendelse |
 | nr passer til bilens nummerrække. Bilen er `taxi_nr` **aflæst fra bonen**; nummeret sammenlignes med **alle chaufførers** vagter i samme bil (±10 dage, højst 50 fra nærmeste nummer, taxameteret tæller kun op) — aldrig kun med den aktuelle chaufførs egne vagter. Ny bil uden historik → altid manuel | til_godkendelse |
-| dublet: kilde + taxi_nr + nr | afvist |
+| dublet: kilde + taxi_nr + nr — **uden chauffør**, så samme bon ikke kan ligge hos to chauffører (samme nøgle som den unikke nøgle i databasen) | afvist |
+| et nummer i 11xx, 16xx eller 18xx skal passe til bilens `taxi_nr` (11xx = 001-7144, 16xx = 001-8646, 18xx = 001-8208). Fx nr 1850 på en bon med taxi_nr 001-7144 fejler | til_godkendelse |
 | samme billede uploadet igen (fingeraftryk af filen) | afvist |
 | vagt slut før upload, og upload senest 48 t efter vagt slut | til_godkendelse |
-| FØRER-navnet på bonen identificerer chaufføren. Kontrolleres **kun når det står der**: navnet sammenlignes med chaufføren, der uploadede. Mangler linjen (KOPI-bon), er det ikke en fejl | til_godkendelse |
+| FØRER-navnet på bonen identificerer chaufføren og **sammenlignes med chaufførens link** (den chauffør, der uploadede). Afvigelse giver `til_godkendelse`. Kontrolleres **kun når navnet står på bonen**: mangler linjen (KOPI-bon), er det ikke en fejl | til_godkendelse |
 | rimelige beløb og vagtlængde (fx ≤ 16 t) | til_godkendelse |
 
 "Forkert auto-godkendelse" = mindst ét af chauffør, taxi_nr, nr, dato, indkørt, overført, bro eller afregn
@@ -52,7 +53,9 @@ afviger fra facit.
 0. **Tests og testmiljø** — `tests/` + GitHub Actions; separat gratis Supabase-projekt til test.
 1. **Database (kun tilføjelser)** — kolonner på `slutrapporter` (kilde, taxi_nr, status, kontroller,
    raa_data, billede_sti, indlaesning_id, virksomhed_id); tabeller `kilder`, `taxier`, `indlaesninger`,
-   `virksomheder`; unik nøgle (kilde, taxi_nr, slutrapport_nr) hvor taxi_nr er udfyldt; taxi_nr på gamle
+   `virksomheder`; **unik nøgle (kilde, taxi_nr, slutrapport_nr) uden chauffør**, hvor taxi_nr er udfyldt, så samme bon ikke kan
+   ligge hos to chauffører (som nr 1112 hos både Adan og Fuad i september). Indsættelse og `opret_slutrapport` tjekker dublet på samme
+   nøgle. Den gamle nøgle (chauffør, nr) bevares, indtil gamle rækker har fået taxi_nr; taxi_nr på gamle
    rækker ud fra **nummerområdet** (11xx = 001-7144, 16xx = 001-8646, 18xx = 001-8208), aldrig ud fra chaufføren,
    da alle chauffører kan køre alle biler. Rækker med et nummer uden for de tre områder vises for ejeren først og
    rettes manuelt; intet køres før listen er godkendt.
@@ -83,6 +86,9 @@ afviger fra facit.
 10. taxi_nr på gamle rækker udfyldes ud fra nummerområdet, ikke ud fra chaufføren.
 11. Nummer-kontrollen går på taxi_nr aflæst fra bonen og sammenligner med alle chaufførers vagter i samme bil.
 12. FØRER-navnet på bonen identificerer chaufføren; det kontrolleres kun, når det står der.
+13. Den unikke nøgle er (kilde, taxi_nr, slutrapport_nr) **uden chauffør**: samme bon kan ikke ligge hos to chauffører.
+14. FØRER-navnet på bonen sammenlignes med chaufførens link (uploaderen). Afvigelse giver `til_godkendelse`.
+15. Et nummer i 11xx, 16xx eller 18xx skal passe til bilens `taxi_nr` (11xx = 001-7144, 16xx = 001-8646, 18xx = 001-8208); ellers `til_godkendelse`.
 
 ## Biler
 Alle chauffører kan køre alle tre vogne; bilen findes ud fra nummerområdet (og fra `taxi_nr` på bonen), ikke ud fra chaufføren.
