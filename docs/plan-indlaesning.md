@@ -38,11 +38,11 @@ index.html ──► Edge Function "modtag-slutrapport"
 | vagt_slut_dato = dato eller dato + 1 | til_godkendelse |
 | dato inden for 60 dage, ikke i fremtiden | til_godkendelse |
 | nr 3–5 cifre, starter ikke med 0 | til_godkendelse |
-| nr passer til bilens rækkefølge (ny bil uden historik → altid manuel) | til_godkendelse |
+| nr passer til bilens nummerrække. Bilen er `taxi_nr` **aflæst fra bonen**; nummeret sammenlignes med **alle chaufførers** vagter i samme bil (±10 dage, højst 50 fra nærmeste nummer, taxameteret tæller kun op) — aldrig kun med den aktuelle chaufførs egne vagter. Ny bil uden historik → altid manuel | til_godkendelse |
 | dublet: kilde + taxi_nr + nr | afvist |
 | samme billede uploadet igen (fingeraftryk af filen) | afvist |
 | vagt slut før upload, og upload senest 48 t efter vagt slut | til_godkendelse |
-| FØRER-navn passer til chaufføren — kun når linjen står på bonen (KOPI-boner har ingen) | til_godkendelse |
+| FØRER-navnet på bonen identificerer chaufføren. Kontrolleres **kun når det står der**: navnet sammenlignes med chaufføren, der uploadede. Mangler linjen (KOPI-bon), er det ikke en fejl | til_godkendelse |
 | rimelige beløb og vagtlængde (fx ≤ 16 t) | til_godkendelse |
 
 "Forkert auto-godkendelse" = mindst ét af chauffør, taxi_nr, nr, dato, indkørt, overført, bro eller afregn
@@ -53,7 +53,9 @@ afviger fra facit.
 1. **Database (kun tilføjelser)** — kolonner på `slutrapporter` (kilde, taxi_nr, status, kontroller,
    raa_data, billede_sti, indlaesning_id, virksomhed_id); tabeller `kilder`, `taxier`, `indlaesninger`,
    `virksomheder`; unik nøgle (kilde, taxi_nr, slutrapport_nr) hvor taxi_nr er udfyldt; taxi_nr på gamle
-   rækker ud fra nummerområde (liste godkendes først).
+   rækker ud fra **nummerområdet** (11xx = 001-7144, 16xx = 001-8646, 18xx = 001-8208), aldrig ud fra chaufføren,
+   da alle chauffører kan køre alle biler. Rækker med et nummer uden for de tre områder vises for ejeren først og
+   rettes manuelt; intet køres før listen er godkendt.
 2. **Lønberegning** — kun `status = 'godkendt'`; kontant = afregn = indkørt − overført − bro;
    **udbetaling = andel − afregn** (bro trækkes ikke fra igen). FØR/EFTER pr. chauffør for 2026-09 først.
 3. **Kontroller som ren kode** med enhedstests (18/19, 5/6, 6/8, 3/8, VDT 2303, taxi "001", KALIB-år, afskåret).
@@ -70,19 +72,26 @@ afviger fra facit.
 1. Bro trækkes ikke fra igen: udbetaling = andel − afregn.
 2. "Send til godkendelse alligevel" er okay.
 3. Upload senere end 48 t efter vagt slut → `til_godkendelse` (ikke afvist).
-4. FØRER-navn kontrolleres kun, når det står på bonen; mangler linjen (KOPI-bon), er det ikke en fejl.
-5. Abdikarins bil: **mangler** (skal bruges i trin 1).
+4. FØRER-navn kontrolleres kun, når det står på bonen; mangler linjen (KOPI-bon), er det ikke en fejl. Navnet på bonen er det, der identificerer chaufføren.
+5. ~~Abdikarins bil~~ — **udgår** (30/9): der er ingen fast bil pr. chauffør, og Abdikarin er afløser uden vagter i september.
 6. Resend er okay; modtager-adresse: **mangler** (skal bruges i trin 6).
 7. Testbilleder i test-projektets private bucket, ikke i repoet.
-8. Salgsversion: privat bucket, tidsbegrænsede links, `OWNER_TOKEN_DEFAULT` fjernes.
+8. Salgsversion: privat bucket, tidsbegrænsede links, `OWNER_TOKEN_DEFAULT` fjernes (fjernet fra dashboardet 30/9, punkt 0.3; koden skiftes i punkt 0.2).
+
+## Beslutninger (ejeren, 2026-09-30)
+9. **Ingen fast bil pr. chauffør.** Alle chauffører kan køre alle tre vogne. Der findes ingen tabel, kolonne eller kontrol, der forudsætter "chauffør → bil".
+10. taxi_nr på gamle rækker udfyldes ud fra nummerområdet, ikke ud fra chaufføren.
+11. Nummer-kontrollen går på taxi_nr aflæst fra bonen og sammenligner med alle chaufførers vagter i samme bil.
+12. FØRER-navnet på bonen identificerer chaufføren; det kontrolleres kun, når det står der.
 
 ## Biler
-| Taxi nr. | Slutrapport-nr. | Chauffør(er) |
-|---|---|---|
-| 001-7144 | 11xx | Adan |
-| 001-8208 | 18xx | Qaalid |
-| 001-8646 | 16xx | Faysal og Fuad (deler) |
-| ? | ? | Abdikarin (ikke afklaret) |
+Alle chauffører kan køre alle tre vogne; bilen findes ud fra nummerområdet (og fra `taxi_nr` på bonen), ikke ud fra chaufføren.
+
+| Taxi nr. | Slutrapport-nr. (nummerområde) |
+|---|---|
+| 001-7144 | 11xx |
+| 001-8208 | 18xx |
+| 001-8646 | 16xx |
 
 ## Acceptkriterier
 - 0 forkerte auto-godkendelser på testsættet og i 2 ugers parallel drift.

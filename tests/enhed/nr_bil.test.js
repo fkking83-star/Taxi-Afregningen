@@ -1,26 +1,29 @@
-// Nummer-advarsel med 3 syntetiske biler (A: 18xx, B: 10xx, C: 16xx) og 5 chauffører der deler biler.
-// (Numrene er opdigtede testdata; den rigtige bil-fordeling står i docs/plan-indlaesning.md.)
+// Nummer-advarsel med 3 syntetiske biler (A: 18xx, B: 11xx, C: 16xx). Der er INGEN fast bil pr. chauffør: alle chauffører
+// kører alle biler, og de roterer mellem dem. Nummeret tæller pr. bil, så det sammenlignes med alle chaufførers vagter.
+// (Numrene er opdigtede testdata; nummerområderne står i docs/plan-indlaesning.md.)
 const f = require('../hjaelpere/nr_advarsler.cjs');
 let fails = 0; const check = (c, m) => { console.log(`${c ? 'PASS' : 'FAIL'}  ${m}`); if (!c) fails++; };
 const d = n => `2026-09-${String(n).padStart(2, '0')}`;
 const r = (id, dag, nr, ch, vs = '16:00') => ({ id, dato: d(dag), slutrapport_nr: String(nr), chauffor: ch, vagt_start: vs });
 const mine = (alle, ch) => alle.filter(x => x.chauffor === ch);
 const flag = (alle, ch) => Object.keys(f(mine(alle, ch), alle)).sort();
+const NAVNE = ['Qaalid', 'Adan', 'Fuad', 'Faysal'];
+const hvem = (dag, bil, skift) => NAVNE[(dag + bil * 3 + skift) % NAVNE.length];   // rotation: samme chauffør kører forskellige biler fra dag til dag
 
-// Bil A (18xx): Qaalid nat, Abdikarin dag  |  Bil B (10xx): Adan, Fuad på skift  |  Bil C (16xx): Faysal
-let A = [], nA = 1830, nB = 1080, nC = 1660;
+// Bil A (18xx): dag- og natvagt hver dag  |  Bil B (11xx): én vagt om dagen  |  Bil C (16xx): to ud af tre dage
+let A = [], nA = 1830, nB = 1101, nC = 1660;
 for (let dag = 1; dag <= 27; dag++) {
-  A.push(r('ab' + dag, dag, nA++, 'Abdikarin', '06:00'));
-  if (dag !== 12) A.push(r('q' + dag, dag, nA++, 'Qaalid'));           // 12/9 låner Qaalid bil B
-  A.push(r((dag % 2 ? 'ad' : 'fu') + dag, dag, nB++, dag % 2 ? 'Adan' : 'Fuad'));
-  if (dag === 12) A.push(r('q12', dag, nB++, 'Qaalid', '17:45'));
-  if (dag % 3) A.push(r('fa' + dag, dag, nC++, 'Faysal'));
+  A.push(r('a' + dag + 'd', dag, nA++, hvem(dag, 0, 0), '06:00'));
+  A.push(r('a' + dag + 'n', dag, nA++, hvem(dag, 0, 1)));
+  A.push(r('b' + dag, dag, nB++, hvem(dag, 1, 0)));
+  if (dag % 3) A.push(r('c' + dag, dag, nC++, hvem(dag, 2, 0)));
 }
-for (const ch of ['Qaalid', 'Abdikarin', 'Adan', 'Fuad', 'Faysal'])
-  check(flag(A, ch).length === 0, `${ch}: ingen falske alarmer (delte biler, numre springer)` + (flag(A, ch).length ? ' ' + flag(A, ch) : ''));
-check(mine(A, 'Qaalid').find(x => x.id === 'q12').slutrapport_nr.startsWith('10'), '(Qaalids lånte vagt 12/9 har bil B-nummer)');
+const bilerPrChauffoer = ch => new Set(mine(A, ch).map(x => x.slutrapport_nr.slice(0, 2)));
+check(NAVNE.every(ch => bilerPrChauffoer(ch).size === 3), 'Testdata: hver chauffør kører alle tre biler (ingen fast bil)');
+for (const ch of NAVNE)
+  check(flag(A, ch).length === 0, `${ch}: ingen falske alarmer (alle kører alle biler, numre springer)` + (flag(A, ch).length ? ' ' + flag(A, ch) : ''));
 
-// Qaalid skifter fast bil midt i måneden (A -> C)
+// En chauffør skifter bil midt i måneden (A -> C), en anden den anden vej
 let B = [], a = 1850, b = 1600;
 for (let dag = 1; dag <= 27; dag++) {
   if (dag <= 14) B.push(r('q' + dag, dag, a++, 'Qaalid')); else B.push(r('q' + dag, dag, b++, 'Qaalid'));
@@ -28,18 +31,21 @@ for (let dag = 1; dag <= 27; dag++) {
 }
 check(flag(B, 'Qaalid').length === 0 && flag(B, 'Faysal').length === 0, 'Bilskift midt i måneden: ingen alarm ved skiftet');
 
-// Rigtige OCR-fejl fanges stadig, selvom bilerne deles
+// Rigtige OCR-fejl fanges stadig, selvom alle kører alle biler
 const C = A.map(x => ({ ...x }));
-C.find(x => x.id === 'q20').slutrapport_nr = String(Number(C.find(x => x.id === 'q20').slutrapport_nr) + 100).replace(/^18/, '19'); // 18xx -> 19xx
-const q20 = C.find(x => x.id === 'q20');
-const rigtig = String(A.find(x => x.id === 'q20').slutrapport_nr);
-const adv = f(mine(C, 'Qaalid'), C);
-check(!!adv['q20'], `18/19-fejl (${rigtig} læst som ${q20.slutrapport_nr}) markeres stadig`);
-C.find(x => x.id === 'fu10').slutrapport_nr = '2303';
-check(!!f(mine(C, 'Fuad'), C)['fu10'], 'Nummer der ikke passer med nogen bil (2303) markeres');
-const D = A.map(x => ({ ...x })); D.find(x => x.id === 'q5').slutrapport_nr = '1936';
-const advD = f(mine(D, 'Qaalid'), D);
-check(advD['q5'] && advD['q5'].includes('Måske 1836?'), '18/19-forslag peger på bilens rigtige række (1936 -> 1836)');
+const ejer = id => C.find(x => x.id === id).chauffor;
+const rigtig = C.find(x => x.id === 'a20d').slutrapport_nr;
+C.find(x => x.id === 'a20d').slutrapport_nr = '19' + rigtig.slice(2);   // 18xx -> 19xx
+const adv = f(mine(C, ejer('a20d')), C);
+check(!!adv['a20d'], `18/19-fejl (${rigtig} læst som ${'19' + rigtig.slice(2)}) markeres stadig`);
+C.find(x => x.id === 'b10').slutrapport_nr = '2303';
+check(!!f(mine(C, ejer('b10')), C)['b10'], 'Nummer der ikke passer med nogen bil (2303) markeres');
+const D = A.map(x => ({ ...x })); const rigtig5 = D.find(x => x.id === 'a5n').slutrapport_nr; D.find(x => x.id === 'a5n').slutrapport_nr = '19' + rigtig5.slice(2);
+const advD = f(mine(D, D.find(x => x.id === 'a5n').chauffor), D);
+check(advD['a5n'] && advD['a5n'].includes(`Måske ${rigtig5}?`), `18/19-forslag peger på bilens rigtige række (${'19' + rigtig5.slice(2)} -> ${rigtig5})`);
+// Det hjælper ikke at se på chaufførens egne vagter alene: en chauffør med få vagter i en bil får ingen falsk alarm
+const F = [r('x1', 10, 1850, 'Afløser'), ...A.filter(x => x.id.startsWith('a'))];
+check(Object.keys(f([F[0]], F)).length === 0, 'En chauffør med kun én vagt i bilen får ingen alarm, når andre chaufførers vagter i samme bil passer');
 
 // To fejl tæt på hinanden "godkender" ikke hinanden (taxameteret tæller kun op)
 const E = [r('q1', 18, 1857, 'Qaalid'), r('q2', 19, 1958, 'Qaalid'), r('q3', 21, 1859, 'Qaalid'), r('q4', 21, 1951, 'Qaalid', '16:45'), r('q5', 23, 1861, 'Qaalid')];

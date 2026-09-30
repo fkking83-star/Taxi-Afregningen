@@ -27,7 +27,7 @@ kun beder ejeren om ét tryk, når noget ikke går op. **Ingen forkert løn må 
 | 0.6 | Make: `raa_data` i HTTP 110 og 121 (halvfærdigt) | 🟨 | Fejlkort forudfyldes med OCR-tal |
 | 0.7 | Migration `ocr_slutrapport_nr` (billedet forsvinder ikke ved Ret) | 🟩 | Billede følger rækken |
 | 0.8 | Backup: dagligt eksport af databasen (gratis plan har ingen automatisk gendannelse) | 🟦 + 🟨 | Gendannelse er afprøvet én gang |
-| 0.9 | Svar til Claude Code: Abdikarins bil, e-mail til daglig oversigt | 🟨 | Sendt |
+| 0.9 | Svar til Claude Code: e-mail til daglig oversigt. (Abdikarins bil udgår: der er ingen fast bil pr. chauffør, og han er afløser uden vagter i september) | 🟨 | Sendt |
 | 0.10 | September-løn til revisor: Faysals boner, Qaalid ✓, tjek dubletter/⚠ | 🟨 | Sendt til revisor |
 
 ## Fase 1 — Ny indlæsning uden Make (hovedprojektet)
@@ -36,7 +36,7 @@ kun beder ejeren om ét tryk, når noget ikke går op. **Ingen forkert løn må 
 | Trin | Indhold | Hvem |
 |---|---|---|
 | 1.0 | Tests i repoet + GitHub Actions ✓ (næsten færdigt); separat test-Supabase-projekt | 🟩 |
-| 1.1 | Database udvides: kilde, taxi_nr, status, kontroller, raa_data, billede_sti, virksomhed_id + tabellerne kilder, taxier, indlæsninger, virksomheder | 🟦 |
+| 1.1 | Database udvides: kilde, taxi_nr, status, kontroller, raa_data, billede_sti, virksomhed_id + tabellerne kilder, taxier, indlæsninger, virksomheder. taxi_nr på gamle rækker udfyldes ud fra nummerområde (11xx = 001-7144, 16xx = 001-8646, 18xx = 001-8208), aldrig ud fra chaufføren; rækker uden for områderne vises først og rettes manuelt | 🟦 |
 | 1.2 | Lønberegning: kun `status = godkendt`; kontant = afregn; udbetaling = andel − afregn | 🟩 |
 | 1.3 | Kontroller som ren kode med enhedstests (18/19, 5/6, 6/8, 3/8, VDT 2303, taxi "001", KALIB-år, afskåret) | 🟦 |
 | 1.4 | Edge Function "modtag-slutrapport": OpenAI structured outputs, billede i privat bucket, log af hver indlæsning | 🟦 + 🟨 (deploy) |
@@ -44,7 +44,7 @@ kun beder ejeren om ét tryk, når noget ikke går op. **Ingen forkert løn må 
 | 1.6 | OCR-test på ca. 20 rigtige boner | 🟨 leverer boner, 🟦 måler |
 | 1.7 | 2 ugers skyggedrift, derefter skift af upload-siden, Make slukkes | 🟩 |
 
-**Kontroller (Dantaxi):** konto+kort=overført · indkørt−overført−bro=afregn · slutdato = start eller +1 dag · dato inden for 60 dage · nr 3–5 cifre, ikke 0 først · nr passer til bilens række · dublet · samme billede igen · upload senest 48 t efter vagt · FØRER-navn (kun hvis det står der) · rimelige beløb/vagtlængde.
+**Kontroller (Dantaxi):** konto+kort=overført · indkørt−overført−bro=afregn · slutdato = start eller +1 dag · dato inden for 60 dage · nr 3–5 cifre, ikke 0 først · nr passer til bilens række (taxi_nr fra bonen, sammenlignet med alle chaufførers vagter i samme bil) · dublet · samme billede igen · upload senest 48 t efter vagt · FØRER-navnet på bonen identificerer chaufføren (kontrolleres kun hvis det står der) · rimelige beløb/vagtlængde.
 
 **Acceptkriterier:** 0 forkerte auto-godkendelser på testsæt og i 2 ugers skyggedrift · alt der afviger lander synligt · ny kilde = kun en adapter + testsæt.
 
