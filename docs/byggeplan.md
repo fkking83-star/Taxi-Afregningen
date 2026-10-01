@@ -36,7 +36,7 @@ kun beder ejeren om ét tryk, når noget ikke går op. **Ingen forkert løn må 
 | Trin | Indhold | Hvem |
 |---|---|---|
 | 1.0 | Tests i repoet + GitHub Actions ✓ (næsten færdigt); separat test-Supabase-projekt | 🟩 |
-| 1.1 | Database udvides: kilde, taxi_nr, status, kontroller, raa_data, billede_sti, virksomhed_id + tabellerne kilder, taxier, indlæsninger, virksomheder. taxi_nr på gamle rækker udfyldes ud fra nummerområde (11xx = 001-7144, 16xx = 001-8646, 18xx = 001-8208), aldrig ud fra chaufføren; rækker uden for områderne vises først og rettes manuelt | 🟦 |
+| 1.1 | Database udvides: kilde, taxi_nr, status, kontroller, raa_data, billede_sti, virksomhed_id + tabellerne kilder, taxier, indlæsninger, virksomheder. taxi_nr på gamle rækker udfyldes ud fra nummerområde (11xx = 001-7144, 16xx = 001-8646, 18xx = 001-8208), aldrig ud fra chaufføren; rækker uden for områderne vises først og rettes manuelt; den unikke nøgle (kilde, taxi_nr, slutrapport_nr) uden chauffør oprettes først, når der ikke er samme bon hos to chauffører (læse-forespørgsel viser alle par, og migrationen stopper med en tydelig fejl, hvis der stadig er nogen) | 🟦 |
 | 1.2 | Lønberegning: kun `status = godkendt`; kontant = afregn; udbetaling = andel − afregn | 🟩 |
 | 1.3 | Kontroller som ren kode med enhedstests (18/19, 5/6, 6/8, 3/8, VDT 2303, taxi "001", KALIB-år, afskåret) | 🟦 |
 | 1.4 | Edge Function "modtag-slutrapport": OpenAI structured outputs, billede i privat bucket, log af hver indlæsning | 🟦 + 🟨 (deploy) |
@@ -47,6 +47,12 @@ kun beder ejeren om ét tryk, når noget ikke går op. **Ingen forkert løn må 
 **Kontroller (Dantaxi):** konto+kort=overført · indkørt−overført−bro=afregn · slutdato = start eller +1 dag · dato inden for 60 dage · nr 3–5 cifre, ikke 0 først · nr passer til bilens række (taxi_nr fra bonen, sammenlignet med alle chaufførers vagter i samme bil) · dublet · samme billede igen · upload senest 48 t efter vagt · FØRER-navnet på bonen identificerer chaufføren (kontrolleres kun hvis det står der) · rimelige beløb/vagtlængde.
 
 **Acceptkriterier:** 0 forkerte auto-godkendelser på testsæt og i 2 ugers skyggedrift · alt der afviger lander synligt · ny kilde = kun en adapter + testsæt.
+
+**Beslutninger for indlæsningen (samme ordlyd som `docs/plan-indlaesning.md`, beslutning 13–16):**
+13. Den unikke nøgle er (kilde, taxi_nr, slutrapport_nr) **uden chauffør**: samme bon kan ikke ligge hos to chauffører.
+14. FØRER-navnet på bonen sammenlignes med chaufførens link (uploaderen). Afvigelse giver `til_godkendelse`.
+15. Et nummer i 11xx, 16xx eller 18xx skal passe til bilens `taxi_nr` (11xx = 001-7144, 16xx = 001-8646, 18xx = 001-8208); ellers `til_godkendelse`.
+16. Den unikke nøgle oprettes først, når der ikke er samme bon hos to chauffører. En læse-forespørgsel (`supabase/forespoergsler/taxi_nr_4_samme_bon_hos_flere_chauffoerer.sql`) viser alle par (samme bil, samme nr, forskellige chauffører), og migrationen starter med en vagt (`taxi_nr_5_vagt_foer_unik_noegle.sql`), der stopper med en tydelig fejl, hvis der stadig er nogen. Intet ændres da.
 
 ### Udfasning af Make.com (mål: Make slukkes helt)
 | Make-modul i dag | Erstattes af |

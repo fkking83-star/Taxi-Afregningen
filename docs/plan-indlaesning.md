@@ -55,7 +55,10 @@ afviger fra facit.
    raa_data, billede_sti, indlaesning_id, virksomhed_id); tabeller `kilder`, `taxier`, `indlaesninger`,
    `virksomheder`; **unik nøgle (kilde, taxi_nr, slutrapport_nr) uden chauffør**, hvor taxi_nr er udfyldt, så samme bon ikke kan
    ligge hos to chauffører (som nr 1112 hos både Adan og Fuad i september). Indsættelse og `opret_slutrapport` tjekker dublet på samme
-   nøgle. Den gamle nøgle (chauffør, nr) bevares, indtil gamle rækker har fået taxi_nr; taxi_nr på gamle
+   nøgle. Nøglen oprettes **først**, når der ikke er samme bon hos to chauffører: forespørgsel
+   `taxi_nr_4_samme_bon_hos_flere_chauffoerer.sql` viser alle par, og migrationen starter med en vagt
+   (`taxi_nr_5_vagt_foer_unik_noegle.sql`), der stopper med en tydelig fejl, hvis der stadig er nogen (intet ændres da).
+   Den gamle nøgle (chauffør, nr) bevares, indtil gamle rækker har fået taxi_nr; taxi_nr på gamle
    rækker ud fra **nummerområdet** (11xx = 001-7144, 16xx = 001-8646, 18xx = 001-8208), aldrig ud fra chaufføren,
    da alle chauffører kan køre alle biler. Rækker med et nummer uden for de tre områder vises for ejeren først og
    rettes manuelt; intet køres før listen er godkendt.
@@ -89,6 +92,7 @@ afviger fra facit.
 13. Den unikke nøgle er (kilde, taxi_nr, slutrapport_nr) **uden chauffør**: samme bon kan ikke ligge hos to chauffører.
 14. FØRER-navnet på bonen sammenlignes med chaufførens link (uploaderen). Afvigelse giver `til_godkendelse`.
 15. Et nummer i 11xx, 16xx eller 18xx skal passe til bilens `taxi_nr` (11xx = 001-7144, 16xx = 001-8646, 18xx = 001-8208); ellers `til_godkendelse`.
+16. Den unikke nøgle oprettes først, når der ikke er samme bon hos to chauffører. En læse-forespørgsel (`supabase/forespoergsler/taxi_nr_4_samme_bon_hos_flere_chauffoerer.sql`) viser alle par (samme bil, samme nr, forskellige chauffører), og migrationen starter med en vagt (`taxi_nr_5_vagt_foer_unik_noegle.sql`), der stopper med en tydelig fejl, hvis der stadig er nogen. Intet ændres da.
 
 ## Biler
 Alle chauffører kan køre alle tre vogne; bilen findes ud fra nummerområdet (og fra `taxi_nr` på bonen), ikke ud fra chaufføren.
