@@ -75,6 +75,13 @@
   .notice { background: #FFF6D9; border: 1px solid #F0D98A; color: #6B5600; border-radius: 12px; padding: 14px; font-size: 14px; margin-bottom: 16px; }
   input[type=file] { position: absolute; width: 1px; height: 1px; opacity: 0; overflow: hidden; }
   footer { text-align: center; color: var(--muted); font-size: 12px; padding: 0 20px 24px; }
+  .scan-afvist { background: var(--red-bg); color: var(--red); border-radius: 12px; padding: 14px 16px; margin: 0 0 14px; font-size: 16px; font-weight: 600; }
+  .scan-afvist small { display: block; font-weight: 400; font-size: 14px; margin-top: 4px; }
+  .scan-tjekker { color: var(--muted); font-size: 15px; text-align: center; margin: 0 0 14px; }
+  .scan-hint { color: var(--muted); font-size: 13px; text-align: center; margin: -8px 0 14px; }
+  .scan-debug { background: #14181F; color: #D7DBE3; border-radius: 10px; padding: 10px 12px; margin: 0 0 14px; font-size: 12px; overflow-x: auto; }
+  .scan-debug pre { margin: 0 0 8px; white-space: pre-wrap; word-break: break-word; font-family: ui-monospace, Menlo, Consolas, monospace; }
+  .scan-debug button { font-size: 14px; padding: 8px 12px; border-radius: 8px; border: 1px solid #5B6270; background: transparent; color: #fff; font-family: inherit; }
   .hidden { display: none !important; }
 </style>
 </head>
@@ -98,9 +105,15 @@
       <div id="previewArea" class="hidden">
         <div class="preview-wrap"><img id="previewImg" alt="Dit billede af slutrapporten"></div>
         <p class="meta" id="fileMeta"></p>
+        <p class="scan-tjekker hidden" id="scanTjekker">Tjekker billedet…</p>
+        <div class="scan-afvist hidden" id="scanAfvist" role="alert"></div>
+        <p class="scan-hint hidden" id="scanHint"></p>
+        <div class="scan-debug hidden" id="scanDebug"><pre id="scanDebugTxt"></pre><button type="button" id="scanKopi">Kopiér målinger</button> <span id="scanKopiSvar"></span></div>
         <button class="btn btn-send" id="sendBtn"><span class="ic">✓</span> Send slutrapport</button>
         <div style="height:10px"></div>
         <button class="btn btn-ghost" id="retakeBtn">Vælg et andet billede</button>
+        <div style="height:10px" class="scan-alligevel hidden"></div>
+        <button class="btn btn-ghost hidden" id="sendAlligevelBtn">Send alligevel (bonen kontrolleres manuelt)</button>
       </div>
       <div id="captureArea">
         <button class="btn btn-primary" id="captureBtn"><span class="ic">📷</span> Tag billede</button>
@@ -157,6 +170,183 @@ const DRIVERS = [
 const MAX_SIDE = 1600;
 const JPEG_Q   = 0.82;
 
+/* SCAN-START — lag 1: lokal billedkvalitetstest. Aktiv KUN med ?scan=1 eller ?scan=debug. Intet forlader telefonen (ingen netværkskald, ingen biblioteker).
+   Alle tal i SCAN_GRAENSER er STARTVÆRDIER til målefasen (docs/plan-scan-foer-send.md), ikke målte tærskler. Kan analysen ikke køre, GODKENDES billedet. */
+const SCAN_GRAENSER = {
+  analyseSide: 1000,     // lang side på den nedskalerede kopi, som bonen findes på
+  roiBredde: 640,        // bonen skaleres til denne bredde før sløring/lys/genskin måles (så tallene kan sammenlignes på tværs af opløsninger)
+  blok: 8,               // blokstørrelse (px) til sammenhængende områder
+  minKortSide: 1000,     // originalens korteste side
+  minBonBredde1600: 600, // bonens bredde, når billedet har lang side 1600 (størrelsen, der sendes)
+  minBonAreal: 0.10,     // lyst sammenhængende område (andel af billedet), før det regnes som en bon
+  minBonFyld: 0.35,      // bonens boks (andel af billedets areal)
+  minBonLangSide: 0.60,  // bonens lange side (andel af billedets lange side)
+  kantMargen: 0.015,     // bonen må ikke røre billedets kant foroven/forneden (andel af højden)
+  minLaplace: 100,       // varians af Laplace-filter på bonen (startværdi fra syntetiske billeder)
+  minMedian: 90,         // median-luma i bonen
+  minKontrast: 60,       // P95 − P5 i bonen
+  genskinLuma: 245,      // (næsten) hvid pixel
+  genskinBlokAndel: 0.04,// sammenhængende hvidt område (andel af bonen)
+  genskinTotal: 0.35,    // eller så stor en andel hvide pixel i alt
+  genskinMaksDaekning: 0.8, // … men kun hvis det hvide område er en plet (dets boks dækker under 80 % af bonen); er hele papiret lyst, er det ikke genskin
+  skaevHint: 12          // grader; kun et hint, aldrig afvisning
+};
+const SCAN_TEKST = { lille: "for lille", hele: "hele bonen skal med", sloeret: "for sløret", moerkt: "for mørkt", genskin: "genskin" };
+const SCAN_KOLONNER = ["fil", "bredde", "hoejde", "bon_fundet", "bon_areal", "bon_fyld", "bon_langside", "roerer_kant", "bon_bredde_1600", "vinkel",
+                       "laplace", "grad_p90", "median", "kontrast", "genskin_blok", "genskin_total", "genskin_daekning", "godkendt", "aarsager", "ms"];
+
+function scanGraa(rgba, w, h){
+  const g = new Uint8Array(w * h);
+  for(let i = 0, j = 0; i < g.length; i++, j += 4) g[i] = (rgba[j] * 77 + rgba[j + 1] * 150 + rgba[j + 2] * 29) >> 8;
+  return g;
+}
+
+function scanHist(g){ const h = new Uint32Array(256); for(let i = 0; i < g.length; i++) h[g[i]]++; return h; }
+
+function scanOtsu(hist, n){
+  let sum = 0; for(let i = 0; i < 256; i++) sum += i * hist[i];
+  let wB = 0, sumB = 0, best = -1, t = 127;
+  for(let i = 0; i < 256; i++){
+    wB += hist[i]; if(!wB) continue;
+    const wF = n - wB; if(!wF) break;
+    sumB += i * hist[i];
+    const mB = sumB / wB, mF = (sum - sumB) / wF, v = wB * wF * (mB - mF) * (mB - mF);
+    if(v > best){ best = v; t = i; }
+  }
+  return t;
+}
+
+function scanPercentil(hist, n, p){ let c = 0; const maal = n * p; for(let i = 0; i < 256; i++){ c += hist[i]; if(c >= maal) return i; } return 255; }
+
+/* Største 4-sammenhængende område af 1-taller i en blokmaske. Returnerer antal, boks (i blokke) og momenter til hældning. */
+function scanStoerste(maske, bw, bh){
+  const set = new Uint8Array(maske.length), stak = [];
+  let bedst = null;
+  for(let s = 0; s < maske.length; s++){
+    if(!maske[s] || set[s]) continue;
+    const r = { antal: 0, x0: bw, y0: bh, x1: -1, y1: -1, sx: 0, sy: 0, sxx: 0, syy: 0, sxy: 0 };
+    stak.length = 0; stak.push(s); set[s] = 1;
+    while(stak.length){
+      const i = stak.pop(), x = i % bw, y = (i - x) / bw;
+      r.antal++; r.sx += x; r.sy += y; r.sxx += x * x; r.syy += y * y; r.sxy += x * y;
+      if(x < r.x0) r.x0 = x; if(x > r.x1) r.x1 = x; if(y < r.y0) r.y0 = y; if(y > r.y1) r.y1 = y;
+      if(x > 0 && maske[i - 1] && !set[i - 1]){ set[i - 1] = 1; stak.push(i - 1); }
+      if(x < bw - 1 && maske[i + 1] && !set[i + 1]){ set[i + 1] = 1; stak.push(i + 1); }
+      if(y > 0 && maske[i - bw] && !set[i - bw]){ set[i - bw] = 1; stak.push(i - bw); }
+      if(y < bh - 1 && maske[i + bw] && !set[i + bw]){ set[i + bw] = 1; stak.push(i + bw); }
+    }
+    if(!bedst || r.antal > bedst.antal) bedst = r;
+  }
+  return bedst;
+}
+
+/* Finder bonen: Otsu-tærskel -> største lyse sammenhængende område. Returnerer boks i pixel (på analysebilledet) og målene. */
+function scanFindBon(g, w, h, G){
+  const t = scanOtsu(scanHist(g), g.length), B = G.blok, bw = Math.floor(w / B), bh = Math.floor(h / B);
+  const maske = new Uint8Array(bw * bh);
+  for(let by = 0; by < bh; by++) for(let bx = 0; bx < bw; bx++){
+    let n = 0;
+    for(let y = by * B; y < by * B + B; y++){ const rk = y * w; for(let x = bx * B; x < bx * B + B; x++) if(g[rk + x] > t) n++; }
+    if(n * 2 > B * B) maske[by * bw + bx] = 1;
+  }
+  const k = scanStoerste(maske, bw, bh);
+  const ud = { t, fundet: false, areal: 0, fyld: 0, langside: 0, roererKant: false, vinkel: null, x0: 0, y0: 0, x1: w, y1: h };
+  if(!k) return ud;
+  ud.areal = k.antal / (bw * bh);
+  ud.x0 = k.x0 * B; ud.y0 = k.y0 * B; ud.x1 = (k.x1 + 1) * B; ud.y1 = (k.y1 + 1) * B;
+  const kw = ud.x1 - ud.x0, kh = ud.y1 - ud.y0;
+  ud.fyld = (kw * kh) / (w * h);
+  ud.langside = Math.max(kw, kh) / Math.max(w, h);
+  ud.roererKant = ud.y0 <= G.kantMargen * h || ud.y1 >= h * (1 - G.kantMargen);
+  ud.fundet = ud.areal >= G.minBonAreal;
+  // hældning: hovedaksens afvigelse fra nærmeste lodrette/vandrette akse (kun hvis området er aflangt)
+  const n = k.antal, mx = k.sx / n, my = k.sy / n, cxx = k.sxx / n - mx * mx, cyy = k.syy / n - my * my, cxy = k.sxy / n - mx * my;
+  const tr = cxx + cyy, det = cxx * cyy - cxy * cxy, d = Math.sqrt(Math.max(0, tr * tr / 4 - det)), l1 = tr / 2 + d, l2 = tr / 2 - d;
+  if(l2 > 0 && l1 / l2 > 1.7){
+    const a = Math.abs(0.5 * Math.atan2(2 * cxy, cxx - cyy) * 180 / Math.PI);   // 0..90 fra x-aksen
+    ud.vinkel = Math.min(a, Math.abs(90 - a));
+  }
+  return ud;
+}
+
+/* Målinger på bonen (gråtoner, fast bredde). */
+function scanMaalRoi(g, w, h, G){
+  const hist = scanHist(g), n = g.length;
+  let ud = { median: scanPercentil(hist, n, 0.5), kontrast: scanPercentil(hist, n, 0.95) - scanPercentil(hist, n, 0.05) };
+  // sløring: varians af Laplace-filter (4-nabo) + 90-percentil af gradienten
+  let s = 0, s2 = 0, m = 0; const gh = new Uint32Array(512);
+  for(let y = 1; y < h - 1; y++) for(let x = 1; x < w - 1; x++){
+    const i = y * w + x, c = g[i], l = 4 * c - g[i - 1] - g[i + 1] - g[i - w] - g[i + w];
+    s += l; s2 += l * l; m++;
+    gh[Math.min(511, Math.abs(g[i + 1] - g[i - 1]) + Math.abs(g[i + w] - g[i - w]))]++;
+  }
+  ud.laplace = m ? s2 / m - (s / m) * (s / m) : 0;
+  let c = 0; ud.gradP90 = 0; for(let i = 0; i < 512; i++){ c += gh[i]; if(c >= m * 0.9){ ud.gradP90 = i; break; } }
+  // genskin: andel (næsten) hvide pixel, og største sammenhængende hvide område (blokke, der er næsten helt hvide)
+  const B = G.blok, bw = Math.floor(w / B), bh = Math.floor(h / B), maske = new Uint8Array(Math.max(1, bw * bh));
+  let hvide = 0; for(let i = 0; i < n; i++) if(g[i] >= G.genskinLuma) hvide++;
+  ud.genskinTotal = hvide / n;
+  for(let by = 0; by < bh; by++) for(let bx = 0; bx < bw; bx++){
+    let k = 0;
+    for(let y = by * B; y < by * B + B; y++){ const rk = y * w; for(let x = bx * B; x < bx * B + B; x++) if(g[rk + x] >= G.genskinLuma) k++; }
+    if(k >= B * B * 0.95) maske[by * bw + bx] = 1;
+  }
+  const st = bw && bh ? scanStoerste(maske, bw, bh) : null;
+  ud.genskinBlok = st ? st.antal / (bw * bh) : 0;
+  ud.genskinDaekning = st ? ((st.x1 - st.x0 + 1) * (st.y1 - st.y0 + 1)) / (bw * bh) : 0;
+  return ud;
+}
+
+/* Afgørelse. Returnerer { godkendt, aarsager: [nøgler], hint } */
+function scanAfgoer(o, G){
+  const aarsager = [];
+  if(Math.min(o.bredde, o.hoejde) < G.minKortSide || o.bonBredde1600 < G.minBonBredde1600) aarsager.push("lille");
+  if(!o.bon.fundet || o.bon.fyld < G.minBonFyld || o.bon.langside < G.minBonLangSide || o.bon.roererKant) aarsager.push("hele");
+  if(o.roi.laplace < G.minLaplace) aarsager.push("sloeret");
+  if(o.roi.median < G.minMedian || o.roi.kontrast < G.minKontrast) aarsager.push("moerkt");
+  if((o.roi.genskinBlok >= G.genskinBlokAndel || o.roi.genskinTotal >= G.genskinTotal) && o.roi.genskinDaekning < G.genskinMaksDaekning) aarsager.push("genskin");
+  return { godkendt: aarsager.length === 0, aarsager, hint: o.bon.vinkel !== null && o.bon.vinkel > G.skaevHint ? "Hold telefonen lige over bonen." : "" };
+}
+
+function scanLavCanvas(w, h){ const c = document.createElement("canvas"); c.width = w; c.height = h; return c; }
+
+/* Hele målingen på et billede (ImageBitmap eller <img>). Kaster ved fejl; kalderen godkender så billedet. */
+async function vurderBillede(bitmap, G){
+  G = G || SCAN_GRAENSER;
+  const t0 = performance.now(), ow = bitmap.naturalWidth || bitmap.width, oh = bitmap.naturalHeight || bitmap.height;
+  const s = Math.min(1, G.analyseSide / Math.max(ow, oh)), w = Math.max(1, Math.round(ow * s)), h = Math.max(1, Math.round(oh * s));
+  const c1 = scanLavCanvas(w, h), x1 = c1.getContext("2d", { willReadFrequently: true });
+  x1.drawImage(bitmap, 0, 0, w, h);
+  const bon = scanFindBon(scanGraa(x1.getImageData(0, 0, w, h).data, w, h), w, h, G);
+  // bonen fra ORIGINALEN, skaleret til fast bredde
+  const rx = bon.x0 / s, ry = bon.y0 / s, rw = Math.max(1, (bon.x1 - bon.x0) / s), rh = Math.max(1, (bon.y1 - bon.y0) / s);
+  const roiW = Math.max(8, Math.min(G.roiBredde, Math.round(rw))), roiH = Math.max(8, Math.round(rh * roiW / rw));
+  const c2 = scanLavCanvas(roiW, roiH), x2 = c2.getContext("2d", { willReadFrequently: true });
+  x2.drawImage(bitmap, rx, ry, rw, rh, 0, 0, roiW, roiH);
+  const roi = scanMaalRoi(scanGraa(x2.getImageData(0, 0, roiW, roiH).data, roiW, roiH), roiW, roiH, G);
+  const L = Math.min(Math.max(ow, oh), 1600), bonBredde1600 = Math.min(bon.x1 - bon.x0, bon.y1 - bon.y0) * L / Math.max(w, h);
+  const o = { bredde: ow, hoejde: oh, bon, roi, bonBredde1600 };
+  const a = scanAfgoer(o, G);
+  return Object.assign(o, a, { ms: Math.round(performance.now() - t0) });
+}
+
+function scanRaekke(navn, r){
+  const f = (v, d) => v === null || v === undefined ? "" : String(Math.round(v * Math.pow(10, d)) / Math.pow(10, d)).replace(".", ",");
+  return [navn, r.bredde, r.hoejde, r.bon.fundet ? 1 : 0, f(r.bon.areal, 3), f(r.bon.fyld, 3), f(r.bon.langside, 3), r.bon.roererKant ? 1 : 0, f(r.bonBredde1600, 0),
+          f(r.bon.vinkel, 1), f(r.roi.laplace, 1), f(r.roi.gradP90, 0), r.roi.median, r.roi.kontrast, f(r.roi.genskinBlok, 3), f(r.roi.genskinTotal, 3), f(r.roi.genskinDaekning, 2),
+          r.godkendt ? 1 : 0, r.aarsager.join("+"), r.ms].join("\t");
+}
+/* SCAN-SLUT */
+
+/* Scan-før-send (lag 1): tændes kun af ?scan=1 / ?scan=debug. Uden dem er alt nedenfor uden virkning. */
+const SCAN_PARAM  = new URLSearchParams(location.search).get("scan");
+const SCAN_AKTIV  = SCAN_PARAM === "1" || SCAN_PARAM === "debug";
+const SCAN_DEBUG  = SCAN_PARAM === "debug";
+let scanTilstand = "ingen";   // ingen | tjekker | godkendt | afvist | fejlsikker
+let scanAfvist = 0;           // afviste billeder i træk
+let scanOverstyr = false;     // "Send alligevel"
+let scanLob = 0;              // hvilket billede analysen hører til (et nyere valg gør en gammel analyse ugyldig)
+
 const $ = id => document.getElementById(id);
 let currentDriver = null;
 let currentBlob   = null;
@@ -207,6 +397,57 @@ async function processFile(file){
   $("fileMeta").textContent = "Klar til afsendelse · ca. " + kb + " KB";
   $("captureArea").classList.add("hidden");
   $("previewArea").classList.remove("hidden");
+  if(SCAN_AKTIV) koerScan(bitmap, file.name);
+  else scanTilstand = "ingen";
+}
+
+function scanNulstilVisning(){
+  $("scanTjekker").classList.add("hidden"); $("scanAfvist").classList.add("hidden"); $("scanHint").classList.add("hidden");
+  $("scanDebug").classList.add("hidden"); $("sendAlligevelBtn").classList.add("hidden"); document.querySelector(".scan-alligevel").classList.add("hidden");
+  $("retakeBtn").className = "btn btn-ghost"; $("retakeBtn").textContent = "Vælg et andet billede";
+}
+
+async function koerScan(bitmap, filnavn){
+  const lob = ++scanLob;
+  scanTilstand = "tjekker"; scanOverstyr = false;
+  scanNulstilVisning();
+  $("sendBtn").disabled = true; $("scanTjekker").classList.remove("hidden");
+  let r = null, fejl = null;
+  try{ r = await vurderBillede(bitmap); }catch(e){ fejl = e; }
+  if(lob !== scanLob) return;                         // et nyere billede er valgt imens
+  $("scanTjekker").classList.add("hidden");
+  if(fejl || !r){                                     // fejlsikkert: kan testen ikke køre, godkendes billedet (og chaufføren ser intet)
+    scanTilstand = "fejlsikker"; $("sendBtn").disabled = false;
+    if(SCAN_DEBUG){ $("scanDebugTxt").textContent = "Analysen kunne ikke køre (billedet godkendes): " + (fejl && fejl.message || fejl); $("scanDebug").classList.remove("hidden"); $("scanKopi").classList.add("hidden"); }
+    return;
+  }
+  if(SCAN_DEBUG){
+    const o = r.bon, m = r.roi;
+    $("scanDebugTxt").textContent = (r.godkendt ? "GODKENDT" : "AFVIST: " + r.aarsager.map(a => SCAN_TEKST[a]).join(", ")) + "  (" + r.ms + " ms)\n"
+      + "billede " + r.bredde + "×" + r.hoejde + "  bon_bredde@1600 " + Math.round(r.bonBredde1600) + "\n"
+      + "bon: fundet " + o.fundet + "  areal " + o.areal.toFixed(2) + "  fyld " + o.fyld.toFixed(2) + "  langside " + o.langside.toFixed(2) + "  rører kant " + o.roererKant + "  vinkel " + (o.vinkel === null ? "–" : o.vinkel.toFixed(1)) + "\n"
+      + "slør: laplace " + m.laplace.toFixed(0) + " (min " + SCAN_GRAENSER.minLaplace + ")  grad_p90 " + m.gradP90 + "\n"
+      + "lys: median " + m.median + " (min " + SCAN_GRAENSER.minMedian + ")  kontrast " + m.kontrast + " (min " + SCAN_GRAENSER.minKontrast + ")\n"
+      + "genskin: blok " + m.genskinBlok.toFixed(3) + " (maks " + SCAN_GRAENSER.genskinBlokAndel + ")  total " + m.genskinTotal.toFixed(3) + " (maks " + SCAN_GRAENSER.genskinTotal + ")  dækning " + m.genskinDaekning.toFixed(2) + " (kun plet under " + SCAN_GRAENSER.genskinMaksDaekning + ")\n"
+      + "kolonner: " + SCAN_KOLONNER.join(" | ");
+    $("scanDebug").dataset.raekke = scanRaekke(filnavn || "", r);
+    $("scanKopi").classList.remove("hidden"); $("scanDebug").classList.remove("hidden");
+  }
+  if(r.hint){ $("scanHint").textContent = r.hint; $("scanHint").classList.remove("hidden"); }
+  if(r.godkendt){ scanTilstand = "godkendt"; scanAfvist = 0; $("sendBtn").disabled = false; return; }
+  scanTilstand = "afvist"; scanAfvist++;
+  $("sendBtn").disabled = true;
+  $("scanAfvist").innerHTML = "Billedet kunne ikke læses. Tag et nyt og mere tydeligt billede<small>" + r.aarsager.map(a => SCAN_TEKST[a]).join(" · ") + "</small>";
+  $("scanAfvist").classList.remove("hidden");
+  $("retakeBtn").className = "btn btn-primary"; $("retakeBtn").textContent = "📷 Tag nyt billede";
+  if(scanAfvist >= 2){ document.querySelector(".scan-alligevel").classList.remove("hidden"); $("sendAlligevelBtn").classList.remove("hidden"); }
+}
+
+function scanKopier(){
+  const t = $("scanDebug").dataset.raekke || "", svar = $("scanKopiSvar");
+  const ok = () => { svar.textContent = "Kopieret"; };
+  const reserve = () => { const a = document.createElement("textarea"); a.value = t; document.body.appendChild(a); a.select(); try{ document.execCommand("copy"); ok(); }catch(e){ svar.textContent = "Kunne ikke kopiere"; } a.remove(); };
+  try{ navigator.clipboard.writeText(t).then(ok, reserve); }catch(e){ reserve(); }
 }
 
 function loadViaImg(file){
@@ -215,6 +456,7 @@ function loadViaImg(file){
 
 async function send(){
   if(!currentBlob || !currentDriver) return;
+  if(SCAN_AKTIV && (scanTilstand === "tjekker" || (scanTilstand === "afvist" && !scanOverstyr))) return;   // værn: et afvist (eller endnu ikke tjekket) billede sendes aldrig
   if(!MAKE_WEBHOOK_URL || MAKE_WEBHOOK_URL==="SÆT_DIN_WEBHOOK_ADRESSE_IND_HER"){ showError("Webhook-adressen mangler i filen."); return; }
   showBlock("sending");
 
@@ -252,6 +494,7 @@ function showBlock(which){
 }
 
 function showSuccess(vagt){
+  scanAfvist = 0; scanOverstyr = false;
   showBlock("none"); $("okBlock").classList.remove("hidden");
   $("vagtLine").innerHTML = vagt ? '<div class="vagt">Vagt '+vagt+'</div>' : "";
 }
@@ -261,13 +504,20 @@ function showError(msg){ showBlock("none"); $("errBlock").classList.remove("hidd
 function clearInputs(){ $("cameraInput").value=""; $("galleryInput").value=""; }
 
 function resetToCapture(){
-  currentBlob = null; clearInputs();
+  currentBlob = null; clearInputs(); scanLob++; scanTilstand = "ingen"; scanNulstilVisning(); $("sendBtn").disabled = false;
   $("previewArea").classList.add("hidden"); $("captureArea").classList.remove("hidden"); showBlock("capture");
 }
 
 $("captureBtn").addEventListener("click", () => $("cameraInput").click());
 $("attachBtn").addEventListener("click", () => $("galleryInput").click());
-$("retakeBtn").addEventListener("click", () => { currentBlob=null; clearInputs(); $("previewArea").classList.add("hidden"); $("captureArea").classList.remove("hidden"); });
+$("retakeBtn").addEventListener("click", () => {
+  const takNyt = SCAN_AKTIV && scanTilstand === "afvist";
+  currentBlob=null; clearInputs(); scanLob++; scanNulstilVisning(); $("sendBtn").disabled = false;
+  $("previewArea").classList.add("hidden"); $("captureArea").classList.remove("hidden");
+  if(takNyt) $("cameraInput").click();
+});
+$("sendAlligevelBtn").addEventListener("click", () => { scanOverstyr = true; send(); });
+$("scanKopi").addEventListener("click", scanKopier);
 $("cameraInput").addEventListener("change", e => { if(e.target.files[0]) processFile(e.target.files[0]); });
 $("galleryInput").addEventListener("change", e => { if(e.target.files[0]) processFile(e.target.files[0]); });
 $("sendBtn").addEventListener("click", send);

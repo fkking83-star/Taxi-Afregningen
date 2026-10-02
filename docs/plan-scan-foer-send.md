@@ -1,6 +1,6 @@
 # Plan: "Scan før send" i index.html
 
-Status: **plan, ikke godkendt. Intet er bygget.** Skrevet 3/10-2026.
+Status: **godkendt 3/10-2026 (D1–D8 besvaret, se nederst). Lag 1 er bygget i `site/index.html` bag `?scan=1` / `?scan=debug`; lag 2 afventer test-projektet (1.0) og nye tokens (0.2).** Skrevet 3/10-2026.
 
 **Rører ikke:** lønberegningen, Make, kvittering.html, dashboardet. Lag 1 ændrer kun `site/index.html`. Lag 2 hører til trin 4–5 i `docs/plan-indlaesning.md` og bygges først, når test-projektet findes.
 
@@ -153,3 +153,21 @@ Funktionen testes med en falsk OpenAI (som bagudkørslen) og enhedstests af de s
 - Tærskler fra få billeder generaliserer dårligt (derfor varianter og skyggetilstand).
 - Telefonernes kamera og EXIF opfører sig forskelligt (især iOS): kræver test på dine egne telefoner.
 - Lag 2 afhænger af OCR-kvalitet (trin 1.6) og af, at CHAUFFØR-nr er rigtigt registreret; ellers spærres chauffører for tit, og flugtvejen bruges meget.
+
+---
+
+## Svar fra ejeren 3/10-2026 og hvad der er bygget
+
+**D1–D6 og D8: ja.** Lag 1 er bygget (kun `site/index.html`, tests i `tests/enhed/scan.test.js` og `tests/browser/scan.test.js`, hjælper `tests/hjaelpere/scan_billeder.cjs`). Intet er rullet ud til almindelige links.
+
+**D7 – CHAUFFØR-nr:**
+- Qaalid, Faysal, Fuad og Adan har hvert et nummer, som ejeren har aflæst på bonerne; Abdikarin har intet. **Selve numrene står ikke i repoet** (de lægges i databasen i 1.1 med SQL, der vises først).
+- **Adan og Fuad er kun set på én bon:** de lægges ind som **"ikke bekræftet"** (egen kolonne i `chauffoer_kilder`). En afvigelse på et ikke bekræftet nummer giver **kun `til_godkendelse`, aldrig afvisning og aldrig spærret Send**. (Min læsning, til bekræftelse: for de to bekræftede numre følger kontrollen de seks spærrende kontroller i lag 2 som planlagt; for de to ikke bekræftede er den kun en markering til ejeren.)
+- Numrene ligger **ikke** i `index.html` og kontrolleres **kun på serveren** (i `/analyser`/`/bekraeft`). Siden får aldrig facit at se.
+- **`nr` i `DRIVERS` i dag:** feltet bliver sendt som `driver_nr` i formularen til Make (`index.html`, `form.append("driver_nr", currentDriver.nr)`). Værdierne ligner telefonnumre (otte cifre, Faysal tom, Abdikarin med landekode), ikke sekscifrede CHAUFFØR-nr. Det er **ikke** CHAUFFØR-nr og bruges ikke af scanningen. Ejeren bekræfter, hvad Make bruger det til, før feltet røres.
+
+**Lag 1, som det er bygget (startværdier, målefasen sætter de endelige):**
+- Tændes kun af `?scan=1` (afvisning + låst Send) eller `?scan=debug` (samme + målinger og "Kopiér målinger"). Uden dem er siden uændret (testet).
+- Ni målinger i `SCAN_GRAENSER` (størrelse, bon fundet, fylder, rører kant, sløring, lys, kontrast, genskin, hældning). Genskin tæller kun som en **plet** (dens boks dækker under 80 % af bonen), så helt lyst papir ikke afvises.
+- Flugtvej efter 2 afviste billeder i træk ("Send alligevel (bonen kontrolleres manuelt)"); `send()` har et værn; fejl i analysen godkender billedet.
+- **Kendte svagheder:** hvid bon på hvidt bord afvises (testet som kendt svaghed); intet tal læses; Safari/iOS er ikke afprøvet (kun Chromium her); tærsklerne er sat ud fra syntetiske billeder.
