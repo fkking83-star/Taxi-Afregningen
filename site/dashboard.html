@@ -105,7 +105,31 @@
   .btn-fortryd{margin-top:6px;border:1px solid var(--line);background:#fff;border-radius:8px;padding:6px 12px;font-size:13px;cursor:pointer}
   .aendring-fejl{color:var(--red);font-size:13px;font-weight:600;margin-top:4px}
   .aendring-fejl:empty{display:none}
+  /* Kontrol af måneden */
+  .kontrol-top{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+  .kontrol-top h2{margin:0}
+  .kontrol-antal{font-size:14px;font-weight:700;border-radius:999px;padding:3px 12px}
+  .kontrol-antal.har-fund{background:#FFF1BF;color:#7A5F00}
+  .kontrol-antal.ingen{background:var(--green-bg);color:var(--green)}
+  .kontrol-chips{display:flex;flex-wrap:wrap;gap:6px;margin:10px 0 2px}
+  .kontrol-chip{font-size:12px;border:1px solid var(--line);border-radius:999px;padding:3px 10px;background:#fff;font-variant-numeric:tabular-nums}
+  .fund{border:1px solid var(--line);border-radius:12px;padding:10px 12px;margin-top:10px;background:#fff}
+  .fund.ok{opacity:.65;background:#F9FAFB}
+  .fund-top{display:flex;gap:8px;align-items:baseline;flex-wrap:wrap}
+  .fund-dato{margin-left:auto;color:var(--muted);font-size:12px}
+  .fund-tekst{margin-top:3px;font-size:14px;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
+  .fund-forslag{margin-top:4px;font-size:13px;color:var(--muted)}
+  .fund-knapper{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
+  .fund-knapper button{padding:8px 12px;border-radius:8px;font-size:14px;cursor:pointer;border:1px solid var(--line);background:#fff;text-align:left}
+  .fund-knapper .btn-ok{background:var(--green);color:#fff;border-color:var(--green);font-weight:700}
+  .kontrol-fejl{color:var(--red);font-size:13px;font-weight:600;margin-top:8px}
+  .kontrol-fejl:empty{display:none}
+  .kontrol-bund{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-top:12px;font-size:14px}
+  .kontrol-bund button{padding:8px 12px;border-radius:8px;font-size:14px;cursor:pointer;border:1px solid var(--line);background:#fff}
   @media (max-width:699px){
+    .fund-knapper button{flex:1 1 100%;padding:12px 12px;font-size:15px;min-height:44px}
+    .kontrol-bund button{padding:12px 14px;font-size:15px;min-height:44px}
+    .kontrol-bund label{min-height:44px;display:flex;align-items:center;gap:8px}
     .udfyld-grid{flex-direction:column}
     .udfyld-billede{flex:none;width:100%}
     .udfyld-billede img{max-height:260px}
@@ -183,13 +207,26 @@
     <div class="note">"Ret" og "Udfyld og godkend" gemmes med værdierne før og efter. Fortryd virker, så længe rækken ikke er ændret siden — ellers fortrydes den nyeste ændring først.</div>
   </div>
 
+  <div class="card" id="kontrolCard">
+    <div class="kontrol-top"><h2>Kontrol af måneden</h2><span id="kontrolAntal" class="kontrol-antal">…</span></div>
+    <div class="note" id="kontrolInfo">Henter…</div>
+    <div class="kontrol-chips" id="kontrolChips"></div>
+    <div id="kontrolListe"></div>
+    <div class="kontrol-fejl" id="kontrolFejl"></div>
+    <div class="kontrol-bund">
+      <button id="kontrolIgen" type="button">Kør kontrollen igen</button>
+      <label id="kontrolVisOkLabel" class="hidden"><input type="checkbox" id="kontrolVisOk"> <span id="kontrolVisOkTekst">Vis kontrollerede</span></label>
+    </div>
+    <div class="note">Kontrollen foreslår kun og retter intet. Alle rettelser sker med Ret eller Udfyld og godkend og logges dér. "Kontrolleret – OK" skjuler kun fundet; ændres en af rækkerne bagefter, kommer fundet igen.</div>
+  </div>
+
   <div class="card">
     <h2>Slutrapporter (til dobbelt-tjek)</h2>
     <div id="rapporter"><div class="empty">—</div></div>
     <div class="note">Røde rækker = mistænkt dublet (samme dato og beløb). Ret/slet i Supabase hvis det er en dublet.
       Gult ⚠ nummer = passer ikke med nogen bils nummerrække (alle chaufførers vagter tæller med, da bilerne deles) — fx OCR-forveksling af 18/19. Hold musen over for forslag, ret via Ret.</div>
   </div>
-  <p class="version" style="text-align:center;font-size:11px;color:#B7BCC6;margin:14px 0 0">dashboard v2026-09-30a</p>
+  <p class="version" style="text-align:center;font-size:11px;color:#B7BCC6;margin:14px 0 0">dashboard v2026-10-02a</p>
 </main>
 
 <div id="lightbox" class="hidden" role="dialog" aria-label="Billede af slutrapport">
@@ -209,6 +246,7 @@
   <div class="lb-hint"><span class="lb-hint-mus">Musehjul for zoom · træk for at flytte · dobbeltklik zoomer ind og ud</span><span class="lb-hint-touch">Knib for zoom · træk for at flytte · dobbelttryk zoomer ind og ud</span></div>
 </div>
 
+<script src="kontroller.js"></script>
 <script>
 /* ===================== OPSÆTNING — ret KUN denne ene linje ===================== */
 const SUPABASE_URL = "https://vehgabygvxnkrqsoazfs.supabase.co";
@@ -680,6 +718,7 @@ async function gemRet(id){
     lukRet(id);
     refresh();
     loadAendringer();
+    loadKontrol();
   }catch(e){ alert("Kunne ikke gemme rettelsen: " + e.message); }
 }
 
@@ -838,6 +877,10 @@ function visDublet(id){
 // "Åbn i Ret": vis chaufføren og regnskabsmåneden for den gemte række, rul til den og åbn Ret (med billedet)
 async function aabnIRet(fejlId){
   const e = FEJL_KORT.get(fejlId)?.dublet; if(!e) return;
+  return aabnRaekkeIRet(e);
+}
+// Vis rækken (e: {id, chauffor, dato}) i tabellen og åbn Ret med billedet — bruges af fejlkort og af "Kontrol af måneden"
+async function aabnRaekkeIRet(e){
   const ch = DRIVERS.find(d=>d.toLowerCase() === String(e.chauffor||"").trim().toLowerCase()) || String(e.chauffor||"").trim();
   if(![...$("driver").options].some(o=>o.value === ch)) $("driver").add(new Option(ch, ch));
   $("driver").value = ch;
@@ -892,7 +935,7 @@ async function gemUdfyld(id){
   if([...$("driver").options].some(o=>o.value === data.p_chauffor)) $("driver").value = data.p_chauffor;
   const rm = regnskabsmaaned(data.p_dato);
   if([...$("month").options].some(o=>o.value === rm)) $("month").value = rm;
-  await Promise.all([loadFejl(), refresh(), loadAendringer()]);
+  await Promise.all([loadFejl(), refresh(), loadAendringer(), loadKontrol()]);
 }
 
 async function loadFejl(){
@@ -981,12 +1024,98 @@ async function fortrydAendring(id){
   const fejlEl = $("aend-fejl-"+id);
   try{ await rpc("fortryd_aendring", {p_token:OWNER_TOKEN, p_log_id:Number(id)}); }
   catch(e){ if(fejlEl) fejlEl.textContent = e.status === 404 ? "Fortryd findes ikke i databasen endnu (migrationen er ikke kørt)." : (e.besked || e.message); return; }
-  await Promise.all([loadAendringer(), loadFejl(), refresh()]);
+  await Promise.all([loadAendringer(), loadFejl(), refresh(), loadKontrol()]);
 }
 
 async function markerRettet(id){
   try{ await rpc("marker_fejl", {p_token:OWNER_TOKEN, p_id:id, p_status:"rettet"}); loadFejl(); }catch(e){}
 }
+
+/* ===== Kontrol af måneden: de samme kontroller som supabase/forespoergsler/kontrol_maaned.sql (site/kontroller.js) =====
+   Kun forslag. Intet rettes her; rækkerne åbnes i Ret / Udfyld og godkend, så alt logges. */
+const KONTROL = { maaned:null, raekker:new Map(), res:null, ok:new Map(), okVirker:true, visOk:false, antal:0, nr:0 };
+function maanedForskudt(m, d){
+  const [y, mm] = String(m).split("-").map(Number);
+  const t = new Date(Date.UTC(y, mm - 1 + d, 1));
+  return t.getUTCFullYear() + "-" + String(t.getUTCMonth() + 1).padStart(2, "0");
+}
+async function loadKontrol(m){
+  if(!OWNER_TOKEN) return;
+  m = m || KONTROL.maaned || $("month").value; if(!m) return;
+  const nr = ++KONTROL.nr; KONTROL.maaned = m;
+  $("kontrolAntal").textContent = "…"; $("kontrolAntal").className = "kontrol-antal"; $("kontrolFejl").textContent = "";
+  if(typeof Kontroller === "undefined"){ $("kontrolInfo").textContent = "kontroller.js kunne ikke indlæses."; return; }
+  const hent = async mm => ((await rpc("hent_ture", {p_token:OWNER_TOKEN, p_maaned:mm})) || []).map(r=>({...r, maaned:mm}));
+  let valgt;
+  try{
+    // Nabomånederne bruges kun som sammenligning (numre og vagter ved månedsskiftet); fejler de, kontrolleres måneden alene
+    const [v, foer, efter, ok] = await Promise.all([
+      hent(m), hent(maanedForskudt(m, -1)).catch(()=>[]), hent(maanedForskudt(m, 1)).catch(()=>[]),
+      rpc("hent_kontrol_ok", {p_token:OWNER_TOKEN}).then(x=>x||[]).catch(()=>null)
+    ]);
+    if(nr !== KONTROL.nr) return;   // en nyere kørsel er startet
+    valgt = v;
+    const alle = [...v, ...foer, ...efter];
+    KONTROL.raekker = new Map(alle.map(r=>[r.id, r]));
+    KONTROL.okVirker = ok !== null;
+    KONTROL.ok = new Map((ok || []).map(o=>[o.noegle, o]));
+    KONTROL.res = Kontroller.kontrolMaaned(alle, m);
+    KONTROL.antal = v.length;
+  }catch(e){
+    if(nr !== KONTROL.nr) return;
+    KONTROL.res = null;
+    $("kontrolAntal").textContent = "?"; $("kontrolInfo").textContent = "Kunne ikke hente vagterne til kontrollen. (" + (e.besked || e.message) + ")";
+    $("kontrolListe").innerHTML = ""; $("kontrolChips").innerHTML = "";
+    return;
+  }
+  renderKontrol();
+}
+function renderKontrol(){
+  const k = KONTROL, res = k.res; if(!res) return;
+  const aabne = res.fund.filter(f=>!k.ok.has(f.noegle)), okF = res.fund.filter(f=>k.ok.has(f.noegle));
+  $("kontrolAntal").textContent = aabne.length ? `${aabne.length} fund` : "Ingen fund ✓";
+  $("kontrolAntal").className = "kontrol-antal " + (aabne.length ? "har-fund" : "ingen");
+  $("kontrolInfo").textContent = `Regnskabsmåned ${k.maaned} · ${k.antal} vagter kontrolleret (nabomånederne bruges til sammenligning)`
+    + (res.uden_tider ? ` · ${res.uden_tider} vagter uden tider kunne ikke tjekkes for overlap og længde` : "")
+    + (k.okVirker ? "" : " · Markering som kontrolleret er ikke slået til i databasen endnu (migrationen er ikke kørt); alle fund vises.");
+  const pr = {}; aabne.forEach(f=>pr[f.type] = (pr[f.type]||0) + 1);
+  $("kontrolChips").innerHTML = Object.keys(Kontroller.TYPER).filter(t=>pr[t]).map(t=>`<span class="kontrol-chip" data-type="${t}">${escAttr(Kontroller.TYPER[t].titel)}: ${pr[t]}</span>`).join("");
+  const kort = (f, erOk) => {
+    const knapper = f.raekker.map(id=>{ const r = k.raekker.get(id);
+      return r ? `<button type="button" data-aabn="${escAttr(id)}">Åbn i Ret: ${escAttr(r.chauffor||"")} nr ${escAttr(String(r.slutrapport_nr||"").trim())}</button>` : ""; }).join("");
+    const ok = !k.okVirker ? "" : erOk
+      ? `<button type="button" data-fortryd-ok="${escAttr(f.noegle)}">Fortryd OK</button>`
+      : `<button type="button" class="btn-ok" data-ok="${escAttr(f.noegle)}">Kontrolleret – OK</button>`;
+    return `<div class="fund${erOk?" ok":""}" data-type="${f.type}" data-noegle="${escAttr(f.noegle)}">
+      <div class="fund-top"><b>${escAttr(f.titel)}</b><span class="fund-dato">${escAttr(kortDato(f.dato))}</span></div>
+      <div class="fund-tekst">${escAttr(f.tekst)}</div>
+      <div class="fund-forslag">Forslag: ${escAttr(f.forslag)}</div>
+      <div class="fund-knapper">${knapper}${ok}</div></div>`;
+  };
+  let html = aabne.map(f=>kort(f, false)).join("");
+  if(!aabne.length) html = `<div class="empty">Ingen fund i ${escAttr(k.maaned)}.</div>`;
+  if(k.visOk && okF.length) html += `<h3 style="margin:16px 0 0;font-size:14px;color:var(--muted)">Kontrollerede – OK (${okF.length})</h3>` + okF.map(f=>kort(f, true)).join("");
+  $("kontrolListe").innerHTML = html;
+  $("kontrolVisOkLabel").classList.toggle("hidden", !(k.okVirker && okF.length));
+  $("kontrolVisOk").checked = k.visOk;
+  $("kontrolVisOkTekst").textContent = `Vis kontrollerede (${okF.length})`;
+}
+async function kontrolOk(noegle, ok){
+  const f = KONTROL.res && KONTROL.res.fund.find(x=>x.noegle === noegle); if(!f) return;
+  $("kontrolFejl").textContent = "";
+  try{ await rpc("saet_kontrol_ok", {p_token:OWNER_TOKEN, p_noegle:noegle, p_type:f.type, p_raekker:f.raekker, p_ok:ok}); }
+  catch(e){ $("kontrolFejl").textContent = e.status === 404 ? "Markering findes ikke i databasen endnu (migrationen er ikke kørt)." : "Kunne ikke gemme: " + (e.besked || e.message); return; }
+  if(ok) KONTROL.ok.set(noegle, {noegle, type:f.type, hvem:"ejer (dashboard)", tidspunkt:new Date().toISOString()}); else KONTROL.ok.delete(noegle);
+  renderKontrol();
+}
+$("kontrolCard").addEventListener("click", e => {
+  const b = e.target.closest("button"); if(!b) return;
+  if(b.id === "kontrolIgen") loadKontrol();
+  else if(b.dataset.aabn){ const r = KONTROL.raekker.get(b.dataset.aabn); if(r) aabnRaekkeIRet(r); }
+  else if(b.dataset.ok) kontrolOk(b.dataset.ok, true);
+  else if(b.dataset.fortrydOk) kontrolOk(b.dataset.fortrydOk, false);
+});
+$("kontrolVisOk").addEventListener("change", e => { KONTROL.visOk = e.target.checked; renderKontrol(); });
 
 async function refresh(){
   if(!SUPABASE_ANON_KEY){ $("cfg").style.display="block"; return; }
@@ -1037,6 +1166,7 @@ function copyLon(){
 
 $("driver").addEventListener("change", refresh);
 $("month").addEventListener("change", refresh);
+$("month").addEventListener("change", () => loadKontrol($("month").value));
 
 (async function init(){
   if(!SUPABASE_ANON_KEY){ $("cfg").style.display="block"; }
@@ -1050,6 +1180,7 @@ $("month").addEventListener("change", refresh);
   refresh();
   loadFejl();
   loadAendringer();
+  loadKontrol($("month").value);
 })();
 </script>
 </body>

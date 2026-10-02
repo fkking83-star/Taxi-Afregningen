@@ -51,7 +51,7 @@ async function aabn(browser, query, opts = {}) {
     check(kald.length === 0, `${navn}, uden ?k=: ingen kald til databasen (${kald.length})`);
     check(await page.isVisible('#kodeBox') && (await page.textContent('#kodeBox')).includes('Linket mangler ejer-koden'), `${navn}, uden ?k=: beskeden "Linket mangler ejer-koden" vises`);
     check(!(await page.isVisible('#lonseddelCard')) && !(await page.isVisible('#driver')) && !(await page.isVisible('#rapporter')), `${navn}, uden ?k=: lønseddel, valg og tabeller er skjult`);
-    check((await page.textContent('.version')).includes('v2026-09-30a') && await page.isVisible('.version'), `${navn}, uden ?k=: versionsnummeret (v2026-09-30a) ses stadig`);
+    check((await page.textContent('.version')).includes('v2026-10-02a') && await page.isVisible('.version'), `${navn}, uden ?k=: versionsnummeret (v2026-10-02a) ses stadig`);
     check(fejl.length === 0, `${navn}, uden ?k=: ingen JS-fejl` + (fejl.length ? ': ' + fejl.join(' | ') : ''));
     await ctx.close();
 

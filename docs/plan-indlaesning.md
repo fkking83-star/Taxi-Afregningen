@@ -66,6 +66,13 @@ index.html ──► Edge Function "modtag-slutrapport"
 "Forkert auto-godkendelse" = mindst ét af chauffør, taxi_nr, nr, dato, indkørt, overført, bro eller afregn
 afviger fra facit. Afvigelse på chauffor_id, kilde eller bontype tæller også.
 
+## Første udgave af kontrollerne (bygget 2/10-2026)
+Dashboardets "Kontrol af måneden" kører allerede kontrollerne som ren kode i `site/kontroller.js` (samme nøgle-, overlap-, diff-, længde- og hul-logik
+som SQL'en `supabase/forespoergsler/kontrol_maaned.sql`; en test kræver ens fund). Funktionen `Kontroller.tjekNy(ny, eksisterende)` kører de samme
+kontroller på en NY vagt og skal genbruges i `modtag-slutrapport` (trin 3–4) i stedet for at skrive dem om. Parametrene (nummerområder, grænser for
+difference og vagtlængde, overlap-tolerance) står ét sted (`Kontroller.STANDARD`). Kontrollen foreslår kun; rettelser går gennem Ret / Udfyld og godkend.
+Der er endnu ikke bygget: kilde, bontype, CHAUFFØR-nr, FØRER-navn, datoparser, dublet på billede og uploadtidspunkt (kræver selve indlæsningen).
+
 ## Datoparser (design; bygges i trin 3 som ren funktion med enhedstests)
 Bonens datoer kan stå i flere formater, og formatet kan være forskelligt fra kilde til kilde. Parseren returnerer `{dato, format, tvetydig}`
 eller en fejl, aldrig en gætning.
