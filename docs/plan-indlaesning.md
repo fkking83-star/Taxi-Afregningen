@@ -53,6 +53,7 @@ index.html ──► Edge Function "modtag-slutrapport"
 | dato inden for 60 dage, ikke i fremtiden | til_godkendelse |
 | nr 3–5 cifre, starter ikke med 0 | til_godkendelse |
 | nr passer til bilens nummerrække. Bilen er `taxi_nr` **aflæst fra bonen**; nummeret sammenlignes med **alle chaufførers** vagter i samme bil (±10 dage, højst 50 fra nærmeste nummer, taxameteret tæller kun op) — aldrig kun med den aktuelle chaufførs egne vagter. Ny bil uden historik → altid manuel | til_godkendelse |
+| **nummer = VDT(Tk)-tallet** på bonen (fx 2285, 2303) er en kendt OCR-fejl: bonens VDT(Tk) læst af OCR og lig slutrapport-nr (`vdt_tk`), eller et nummer i VDT-intervallet uden nabo inden for 50 | til_godkendelse |
 | dublet: kilde + taxi_nr + nr — **uden chauffør**, så samme bon ikke kan ligge hos to chauffører (samme nøgle som den unikke nøgle i databasen) | afvist |
 | et nummer i 11xx, 16xx eller 18xx skal passe til bilens `taxi_nr` (11xx = 001-7144, 16xx = 001-8646, 18xx = 001-8208). Fx nr 1850 på en bon med taxi_nr 001-7144 fejler | til_godkendelse |
 | samme billede uploadet igen (fingeraftryk af filen) | afvist |
@@ -71,6 +72,11 @@ Dashboardets "Kontrol af måneden" kører allerede kontrollerne som ren kode i `
 som SQL'en `supabase/forespoergsler/kontrol_maaned.sql`; en test kræver ens fund). Funktionen `Kontroller.tjekNy(ny, eksisterende)` kører de samme
 kontroller på en NY vagt og skal genbruges i `modtag-slutrapport` (trin 3–4) i stedet for at skrive dem om. Parametrene (nummerområder, grænser for
 difference og vagtlængde, overlap-tolerance) står ét sted (`Kontroller.STANDARD`). Kontrollen foreslår kun; rettelser går gennem Ret / Udfyld og godkend.
+**Områdetjekket bruger naboer, ikke faste 100-blokke** (3/10-2026): to numre er i samme række (bil), når de højst er 50 fra hinanden (kæde af
+naboer); et nummer uden nogen anden vagt (hos nogen chauffør) inden for 50 er "uden for bilernes rækker". Det retter, at 1095–1098 blev fejlmarkeret og hullet
+1099–1100 skjult. Når bonens `taxi_nr` er læst, sammenlignes kun inden for samme bil. Et ensomt nummer i 2200–2399 (intervallet er et skøn ud fra 2285 og 2303 og rettes i
+`Kontroller.STANDARD`) markeres som **VDT(Tk)-tallet** læst som slutrapport-nr (en kendt OCR-fejl), og er bonens VDT(Tk) læst som `vdt_tk` og lig nummeret, markeres det altid.
+De faste blokke (11xx/16xx/18xx) bruges kun til at udfylde taxi_nr på gamle rækker og til beslutning 15.
 Der er endnu ikke bygget: kilde, bontype, CHAUFFØR-nr, FØRER-navn, datoparser, dublet på billede og uploadtidspunkt (kræver selve indlæsningen).
 
 ## Datoparser (design; bygges i trin 3 som ren funktion med enhedstests)

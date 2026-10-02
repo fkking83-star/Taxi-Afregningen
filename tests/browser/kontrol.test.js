@@ -14,14 +14,16 @@ const nyData = () => [
   v('rC', '2026-09-05', '1805', 'Qaalid', 3100, 3100, '06:00', '14:00'),                                   // hul: 1803–1804 mangler
   v('rD', '2026-09-11', '1150', 'Adan', 4904, 4929, '02:13', '13:31', { billede_url: 'https://example.test/d.jpg' }),
   v('rE', '2026-09-11', '1150', 'Fuad', 4904, 4929, '02:13', '13:31', { billede_url: 'https://example.test/e.jpg' }),   // samme nr hos to chauffører + samme dato og beløb
-  v('rF', '2026-09-13', '2303', 'Qaalid', 3555, 3375, '09:00', '17:00'),                                   // uden for områderne
+  v('rF', '2026-09-13', '2303', 'Qaalid', 3555, 3375, '09:00', '17:00'),                                   // VDT(Tk)-tallet læst som nummer
   v('rG', '2026-09-18', '1610', 'Faysal', 2000, 1400, '06:00', '23:00'),                                   // stor difference (600) + 17 t
   v('rH', '2026-09-18', '1612', 'Adan', 2500, 2500, '20:00', '23:59'),                                     // overlap med rG (samme bil) + hul: 1611 mangler
+  v('rL', '2026-09-10', '1149', 'Qaalid', 3050, 3050, '06:00', '14:00'),                                   // naboer til 1150 (11xx-bilens række)
+  v('rM', '2026-09-12', '1151', 'Faysal', 3060, 3060, '06:00', '14:00'),
   v('rI', '2026-08-27', '1800', 'Fuad', 2900, 2900, '06:00', '14:00'),                                     // forrige regnskabsmåned (2026-08)
   v('rJ', '2026-09-28', '1806', 'Adan', 3200, 3200, '06:00', '14:00'),                                     // 28/9 tæller til 2026-10
   v('rK', '2026-10-05', '1809', 'Fuad', 3300, 3300, '06:00', '14:00'),                                     // hul 1807–1808 (rapporteres i 2026-10)
 ];
-const FORVENTET = { nr_flere_chauffoerer: 1, samme_dato_beloeb: 1, nr_uden_for_omraade: 1, stor_difference: 1, vagtlaengde: 1, overlap: 1, hul_i_raekken: 2 };   // 8 fund i 2026-09
+const FORVENTET = { nr_flere_chauffoerer: 1, samme_dato_beloeb: 1, nr_er_vdt: 1, stor_difference: 1, vagtlaengde: 1, overlap: 1, hul_i_raekken: 2 };   // 8 fund i 2026-09
 
 let failures = 0;
 const check = (cond, msg) => { console.log(`${cond ? 'PASS' : 'FAIL'}  ${msg}`); if (!cond) failures++; };
@@ -94,12 +96,14 @@ const skrivEnd = db => db.kald.filter(k => /^(ret_slutrapport|opret_slutrapport|
     check(await antal(page) === '8 fund', `${navn}: antal fund øverst: "8 fund"`);
     check(JSON.stringify(Object.entries(await fundTyper(page)).sort()) === JSON.stringify(Object.entries(FORVENTET).sort()), `${navn}: de syv kontroltyper med de forventede antal (hul 2, øvrige 1)`);
     const chips = await page.$$eval('.kontrol-chip', cs => cs.map(c => c.textContent));
-    check(chips.length === 7 && chips.includes('Hul i nummerrækken: 2') && chips.includes('Samme nr hos flere chauffører: 1'), `${navn}: oversigt pr. type (chips)`);
+    check(chips.length === 7 && chips.includes('Nummer er VDT(Tk)-tallet: 1') && chips.includes('Hul i nummerrækken: 2') && chips.includes('Samme nr hos flere chauffører: 1'), `${navn}: oversigt pr. type (chips)`);
     const info = await page.textContent('#kontrolInfo');
-    check(info.includes('2026-09') && info.includes('8 vagter kontrolleret'), `${navn}: viser regnskabsmåned og antal kontrollerede vagter (${info.slice(0, 60)}…)`);
+    check(info.includes('2026-09') && info.includes('10 vagter kontrolleret'), `${navn}: viser regnskabsmåned og antal kontrollerede vagter (${info.slice(0, 60)}…)`);
     check((await page.textContent('#kontrolListe .fund .fund-forslag')).startsWith('Forslag:'), `${navn}: hvert fund har et forslag`);
     const fh = await page.$eval('#kontrolListe .fund[data-type="hul_i_raekken"]', d => d.textContent);
     check(fh.includes('nr 1803, 1804 mangler') || fh.includes('nr 1611 mangler'), `${navn}: hul viser hvilke numre der mangler`);
+    const vdt = await page.$eval('#kontrolListe .fund[data-type="nr_er_vdt"]', d => d.textContent);
+    check(vdt.includes('Nr 2303') && vdt.includes('VDT(Tk)') && vdt.includes('Åbn i Ret: Qaalid nr 2303'), `${navn}: nr 2303 vises som VDT(Tk)-tallet med knap til rækken`);
     check(skrivEnd(db).length === 0, `${navn}: kontrollen har ikke ændret noget (ingen ret/opret/bekræft-kald)`);
     const hentet = new Set(db.kald.filter(k => k.fn === 'hent_ture').map(k => k.body.p_maaned));
     check(['2026-08', '2026-09', '2026-10'].every(m => hentet.has(m)), `${navn}: hentede den valgte måned (2026-09) og begge nabomåneder (2026-08, 2026-10) til sammenligning`);

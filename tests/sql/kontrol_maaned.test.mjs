@@ -11,10 +11,9 @@ check(!/\b(insert|update|delete|drop|alter|create|truncate|grant|revoke)\b/i.tes
 
 // Parametrene i SQL'en er de samme som STANDARD i kontroller.js
 const C = K.STANDARD;
-const P = /500 as stor_diff_kr, 0\.2 as stor_diff_pct, 100 as stor_diff_min_kr, 180 as vagt_min_min, 960 as vagt_max_min, 5 as overlap_tol_min/.exec(SQL);
-check(!!P && C.STOR_DIFF_KR === 500 && C.STOR_DIFF_PCT === 0.2 && C.STOR_DIFF_MIN_KR === 100 && C.VAGT_MIN_MIN === 180 && C.VAGT_MAX_MIN === 960 && C.OVERLAP_TOLERANCE_MIN === 5, 'SQL og kontroller.js har de samme parametre (500 kr, 20 %, 100 kr, 3–16 t, 5 min)');
-const omr = [...SQL.matchAll(/\('(001-\d{4})', (\d+), (\d+)\)/g)].map(m => `${m[1]}:${m[2]}-${m[3]}`).join();
-check(omr === C.OMRAADER.map(o => `${o.taxi_nr}:${o.fra}-${o.til}`).join(), 'SQL og kontroller.js har de samme nummerområder');
+const P = /500 as stor_diff_kr, 0\.2 as stor_diff_pct, 100 as stor_diff_min_kr, 180 as vagt_min_min, 960 as vagt_max_min, 5 as overlap_tol_min,\s+50 as nr_afstand, 2200 as vdt_fra, 2399 as vdt_til/.exec(SQL);
+check(!!P && C.STOR_DIFF_KR === 500 && C.STOR_DIFF_PCT === 0.2 && C.STOR_DIFF_MIN_KR === 100 && C.VAGT_MIN_MIN === 180 && C.VAGT_MAX_MIN === 960 && C.OVERLAP_TOLERANCE_MIN === 5 && C.NR_AFSTAND === 50 && C.VDT_FRA === 2200 && C.VDT_TIL === 2399, 'SQL og kontroller.js har de samme parametre (500 kr, 20 %, 100 kr, 3–16 t, 5 min, naboer ±50, VDT 2200–2399)');
+check(!/001-\d{4}/.test(SQL.replace(/--.*$/gm, '')), 'SQL-kontrollen bruger ingen faste biler eller 100-blokke (kun naboer)');
 
 const { db, fejl } = await bygFraMigrationer();
 check(!fejl, 'Kæden bygger' + (fejl ? ': ' + fejl.besked : ''));
@@ -61,6 +60,17 @@ const hand = [
   { dato: '2026-09-20', nr: '1833', chauffor: 'Fuad', indkort: 3100, overfort: 3100, vagt_start: '05:30', vagt_slut: '12:00' },        // overlapper nattens slut i samme bil; hul 1831–1832
   { dato: '2026-09-27', nr: '1880', chauffor: 'Adan', indkort: 1234, overfort: 1234, vagt_start: '06:00', vagt_slut: '14:00' },
   { dato: '2026-09-28', nr: '1884', chauffor: 'Adan', indkort: 1235, overfort: 1235, vagt_start: '06:00', vagt_slut: '14:00' },        // hul hen over månedsskiftet
+  // naboer ±50 (grænsetilfælde) og VDT(Tk)-tal
+  { dato: '2026-09-02', nr: '1300', chauffor: 'Adan', indkort: 2001, overfort: 2001, vagt_start: '06:00', vagt_slut: '14:00' },
+  { dato: '2026-09-03', nr: '1350', chauffor: 'Fuad', indkort: 2002, overfort: 2002, vagt_start: '06:00', vagt_slut: '14:00' },        // præcis 50 fra 1300: samme række
+  { dato: '2026-09-04', nr: '1401', chauffor: 'Qaalid', indkort: 2003, overfort: 2003, vagt_start: '06:00', vagt_slut: '14:00' },     // 51 fra 1350: ensom
+  { dato: '2026-09-05', nr: '2200', chauffor: 'Adan', indkort: 2004, overfort: 2004, vagt_start: '06:00', vagt_slut: '14:00' },        // VDT-grænse, ensom
+  { dato: '2026-09-06', nr: '2399', chauffor: 'Fuad', indkort: 2005, overfort: 2005, vagt_start: '06:00', vagt_slut: '14:00' },        // VDT-grænse, ensom
+  { dato: '2026-09-07', nr: '2400', chauffor: 'Faysal', indkort: 2006, overfort: 2006, vagt_start: '06:00', vagt_slut: '14:00' },     // lige uden for VDT: bare ensom
+  { dato: '2026-09-08', nr: '2285', chauffor: 'Qaalid', indkort: 2007, overfort: 2007, vagt_start: '06:00', vagt_slut: '14:00' },     // VDT-tal
+  { dato: '2026-09-09', nr: '2310', chauffor: 'Adan', indkort: 2008, overfort: 2008, vagt_start: '06:00', vagt_slut: '14:00' },        // 25 fra 2285: de to er en række og ingen af dem er VDT
+  { dato: '2026-09-10', nr: '1095', chauffor: 'Adan', indkort: 2009, overfort: 2009, vagt_start: '06:00', vagt_slut: '14:00' },        // 1095–1098 + 1101 (tidligere fejlmarkeret)
+  { dato: '2026-09-10', nr: '1096', chauffor: 'Fuad', indkort: 2010, overfort: 2010, vagt_start: '15:00', vagt_slut: '20:00' },
 ];
 hand.forEach(h => add(h));
 for (const x of rows) await db.query(`insert into slutrapporter (id, dato, slutrapport_nr, chauffor, indkort, overfort, vagt_start, vagt_slut) values ($1, $2, $3, $4, $5, $6, $7, $8)`,
@@ -80,7 +90,7 @@ for (const maaned of ['2026-09', '2026-10', '2026-11', '2026-08']) {
   check(JSON.stringify(sqlFund) === JSON.stringify(jsFund), `${maaned}: SQL og kontroller.js giver de samme ${jsFund.length} fund` + (JSON.stringify(sqlFund) !== JSON.stringify(jsFund) ? `\n   kun SQL: ${kun(sqlFund, jsFund).slice(0, 4).join(' | ')}\n   kun JS: ${kun(jsFund, sqlFund).slice(0, 4).join(' | ')}` : ''));
   if (maaned === '2026-09') {
     const typer = new Set(jsFund.map(x => x.split(' :: ')[0]));
-    check(typer.size === 7, `2026-09: alle 7 kontrol-typer er repræsenteret i testdata (${[...typer].join(', ')})`);
+    check(typer.size === 8, `2026-09: alle 8 kontrol-typer er repræsenteret i testdata (${[...typer].join(', ')})`);
   }
 }
 check(samlet > 40, `I alt ${samlet} fund sammenlignet`);

@@ -10,6 +10,9 @@
  * En række ("vagt") ser ud som hent_ture leverer den:
  *   { id, dato: "2026-09-11", slutrapport_nr, chauffor, indkort, overfort, vagt_start: "02:13", vagt_slut: "13:31", maaned: "2026-09" }
  * `maaned` er regnskabsmåneden (28.–27.) og bruges til at afgøre, hvilke fund der hører til den valgte måned.
+ * Valgfrit (den nye indlæsning): `taxi_nr` (bilen fra bonen; så sammenlignes kun inden for samme bil) og `vdt_tk` (VDT(Tk)-tallet fra bonen).
+ *
+ * Bilen/rækken findes ud fra NABOER: to numre er i samme række, når de højst er NR_AFSTAND (50) fra hinanden. Der bruges ingen faste 100-blokke.
  */
 (function (root, factory) {
   const k = factory();
@@ -19,7 +22,14 @@
 
   // Parametre. Samme tal står i kontrol_maaned.sql (testen sammenligner).
   const STANDARD = {
-    // Bilernes nummerområder. Alle chauffører kan køre alle biler, så bilen findes KUN ud fra nummeret.
+    // Nummer-rækkerne findes ud fra NABOER, ikke ud fra faste 100-blokke: to numre hører til samme række (samme bil), når de er højst
+    // NR_AFSTAND fra hinanden (kæde af naboer). Et nummer uden nogen anden vagt inden for NR_AFSTAND er "uden for bilernes rækker".
+    NR_AFSTAND: 50,
+    // Slutrapport-nummeret forveksles med VDT(Tk)-tallet på bonen (kendte eksempler: 2285 og 2303). Et ensomt nummer i dette interval
+    // markeres som den kendte OCR-fejl. Intervallet er et skøn ud fra de to eksempler og rettes her, når det rigtige kendes.
+    VDT_FRA: 2200,
+    VDT_TIL: 2399,
+    // KUN til at udfylde taxi_nr på gamle rækker og til kontrollen mod taxi_nr fra bonen (bilFraNr). Bruges IKKE af områdetjekket.
     OMRAADER: [
       { taxi_nr: "001-7144", fra: 1100, til: 1199 },
       { taxi_nr: "001-8646", fra: 1600, til: 1699 },
@@ -35,17 +45,19 @@
 
   const TYPER = {
     nr_flere_chauffoerer: { rang: 1, titel: "Samme nr hos flere chauffører" },
-    nr_uden_for_omraade:  { rang: 2, titel: "Nummer uden for bilernes områder" },
-    overlap:              { rang: 3, titel: "Overlappende vagter" },
-    samme_dato_beloeb:    { rang: 4, titel: "Samme dato og beløb" },
-    stor_difference:      { rang: 5, titel: "Stor difference" },
-    vagtlaengde:          { rang: 6, titel: "Mistænkelig vagtlængde" },
-    hul_i_raekken:        { rang: 7, titel: "Hul i nummerrækken" },
+    nr_er_vdt:            { rang: 2, titel: "Nummer er VDT(Tk)-tallet" },
+    nr_uden_for_omraade:  { rang: 3, titel: "Nummer uden for bilernes områder" },
+    overlap:              { rang: 4, titel: "Overlappende vagter" },
+    samme_dato_beloeb:    { rang: 5, titel: "Samme dato og beløb" },
+    stor_difference:      { rang: 6, titel: "Stor difference" },
+    vagtlaengde:          { rang: 7, titel: "Mistænkelig vagtlængde" },
+    hul_i_raekken:        { rang: 8, titel: "Hul i nummerrækken" },
   };
 
   const FORSLAG = {
     nr_flere_chauffoerer: "Tjek billederne. Er den ene en dublet, skal den fjernes i Supabase (der slettes ikke her). Er nummeret forlæst, rettes det med Ret.",
-    nr_uden_for_omraade:  "Tjek nummeret på billedet (fx 18/19-forveksling), og ret det med Ret. Er det et rigtigt nummer, hvor bilens række er løbet ud over området, så markér OK og sig til, så områderne udvides.",
+    nr_er_vdt:            "Nummeret ligner VDT(Tk)-tallet på bonen, ikke slutrapport-nummeret (en kendt OCR-fejl). Find det rigtige slutrapport-nummer på billedet, og ret det med Ret.",
+    nr_uden_for_omraade:  "Tjek nummeret på billedet (fx 18/19-forveksling), og ret det med Ret. Er det et rigtigt nummer, fx til en ny bil uden andre vagter, så markér OK.",
     overlap:              "To vagter kan ikke køre samtidigt. Tjek tider og nummer på begge billeder, og ret med Ret.",
     samme_dato_beloeb:    "Samme dato og samme indkørte beløb ligner den samme bon indlæst to gange. Tjek billederne.",
     stor_difference:      "Tjek indkørt og overført på billedet (OCR-fejl er almindelige), og ret med Ret.",
@@ -65,7 +77,20 @@
   const kortNavn = r => `${norm(r.chauffor)} nr ${nrTekst(r)} (${kortDato(r.dato)})`;
   const sorterId = ids => [...ids].sort();   // strengsammenligning, som SQL'ens collate "C"
 
-  /** Bilen ud fra nummeret (kun firecifrede tal i et område). Ellers null. */
+  /**
+   * Nummer-rækker ud fra naboer: sorterede, forskellige firecifrede numre, hvor to numre hører til samme række, når de højst er
+   * `afstand` fra hinanden. Returnerer Map nr -> { id, fra, til, antal } (række-id, laveste og højeste nummer, antal forskellige numre).
+   */
+  function nummerSerier(numre, afstand) {
+    const s = [...new Set(numre)].sort((a, b) => a - b), ud = new Map(), serier = [];
+    s.forEach((n, i) => {
+      if (i === 0 || n - s[i - 1] > afstand) serier.push({ id: serier.length + 1, fra: n, til: n, antal: 0 });
+      const x = serier[serier.length - 1]; x.til = n; x.antal++; ud.set(n, x);
+    });
+    return ud;
+  }
+
+  /** Bilen ud fra nummeret i et fast 100-område. Bruges kun til at udfylde taxi_nr og til kontrol mod taxi_nr, ikke af områdetjekket. */
   function bilFraNr(nr, omraader) {
     const t = norm(nr);
     if (!/^[0-9]{4}$/.test(t)) return null;
@@ -128,11 +153,19 @@
   function kontrolMaaned(raekker, valgt, cfg) {
     cfg = Object.assign({}, STANDARD, cfg || {});
     const alle = (raekker || []).filter(r => r && r.id != null);
+    const nrTalAf = r => /^[0-9]{4}$/.test(nrTekst(r)) ? Number(nrTekst(r)) : null;
+    const serie = nummerSerier(alle.map(nrTalAf).filter(n => n !== null), cfg.NR_AFSTAND);
     const t = alle.map(r => {
-      const bil = bilFraNr(r.slutrapport_nr, cfg.OMRAADER);
-      return { r, bil, gruppe: (bil || "ukendt") + "|" + nrTekst(r), ch: norm(r.chauffor).toLowerCase(), valgt: r.maaned === valgt,
-               iv: vagtInterval(r), nrTal: /^[0-9]{4}$/.test(nrTekst(r)) ? Number(nrTekst(r)) : null };
+      const nrTal = nrTalAf(r), s = nrTal !== null ? serie.get(nrTal) : null;
+      // Bilen: taxi_nr fra bonen, når den findes; ellers rækken, som nummeret hører til (naboer ±NR_AFSTAND)
+      const bil = r.taxi_nr ? norm(r.taxi_nr) : s ? "række " + s.id : null;
+      return { r, bil, serie: s, gruppe: (bil || "ukendt") + "|" + nrTekst(r), ch: norm(r.chauffor).toLowerCase(), valgt: r.maaned === valgt,
+               iv: vagtInterval(r), nrTal };
     });
+    // Har nummeret en anden vagt (andet nummer) højst NR_AFSTAND væk? Med taxi_nr på begge sammenlignes kun inden for samme bil.
+    const harNabo = x => x.nrTal !== null && t.some(u => u.nrTal !== null && u.nrTal !== x.nrTal && Math.abs(u.nrTal - x.nrTal) <= cfg.NR_AFSTAND
+      && (!(x.r.taxi_nr && u.r.taxi_nr) || norm(x.r.taxi_nr) === norm(u.r.taxi_nr)));
+    const raekkeTekst = x => x.serie ? `række ${x.serie.fra}–${x.serie.til}` : "ukendt række";
     const fund = [];
 
     // 1) Samme nr hos flere chauffører (samme bil; uden for områderne tæller bilen som "ukendt")
@@ -140,17 +173,30 @@
     t.forEach(x => { if (!grupper.has(x.gruppe)) grupper.set(x.gruppe, []); grupper.get(x.gruppe).push(x); });
     for (const g of grupper.values()) {
       if (new Set(g.map(x => x.ch)).size > 1 && g.some(x => x.valgt)) {
-        const rs = g.map(x => x.r), bil = g[0].bil || "ukendt bil";
+        const rs = g.map(x => x.r), bil = g[0].r.taxi_nr ? norm(g[0].r.taxi_nr) : raekkeTekst(g[0]);
         const navne = [...new Set(rs.map(r => norm(r.chauffor)))].sort().join(" og ");
         fund.push(lavFund("nr_flere_chauffoerer", "nr_flere_chauffoerer|" + sorterId(rs.map(r => r.id)).join(","), rs,
           `Nr ${nrTekst(rs[0])} (${bil}) står hos ${navne}: ${rs.map(r => `${norm(r.chauffor)} ${kortDato(r.dato)}, indkørt ${heleKr(tal(r.indkort) || 0)}`).join(" / ")}.`));
       }
     }
 
-    // 2) Nummer uden for bilernes områder
-    t.filter(x => x.valgt && x.bil === null).forEach(x =>
-      fund.push(lavFund("nr_uden_for_omraade", "nr_uden_for_omraade|" + x.r.id, [x.r],
-        `Nr ${nrTekst(x.r) || "(tomt)"} (${norm(x.r.chauffor)}, ${kortDato(x.r.dato)}) ligger uden for 11xx, 16xx og 18xx.`)));
+    // 2) Nummer = VDT(Tk)-tallet (kendt OCR-fejl) og 2b) nummer uden for bilernes rækker. Begge ser på naboer (±NR_AFSTAND), ikke på faste blokke.
+    t.filter(x => x.valgt).forEach(x => {
+      const nr = nrTekst(x.r), erTal = x.nrTal !== null;
+      const vdtOpgivet = x.r.vdt_tk != null && norm(x.r.vdt_tk) !== "" && norm(x.r.vdt_tk) === nr;     // bonens VDT(Tk) er læst og lig nummeret
+      const vdtInterval = erTal && x.nrTal >= cfg.VDT_FRA && x.nrTal <= cfg.VDT_TIL && !harNabo(x);       // ellers: ensomt nummer i VDT-intervallet
+      if (vdtOpgivet || vdtInterval) {
+        fund.push(lavFund("nr_er_vdt", "nr_er_vdt|" + x.r.id, [x.r],
+          `Nr ${nr} (${norm(x.r.chauffor)}, ${kortDato(x.r.dato)}) ligner VDT(Tk)-tallet på bonen, ikke slutrapport-nummeret`
+          + (vdtOpgivet ? " (VDT(Tk) på bonen er læst som det samme tal)." : `: det ligger i ${cfg.VDT_FRA}–${cfg.VDT_TIL} og har ingen vagt inden for ${cfg.NR_AFSTAND} numre.`)));
+      } else if (!erTal) {
+        fund.push(lavFund("nr_uden_for_omraade", "nr_uden_for_omraade|" + x.r.id, [x.r],
+          `Nr ${nr || "(tomt)"} (${norm(x.r.chauffor)}, ${kortDato(x.r.dato)}) er ikke et firecifret tal.`));
+      } else if (!harNabo(x)) {
+        fund.push(lavFund("nr_uden_for_omraade", "nr_uden_for_omraade|" + x.r.id, [x.r],
+          `Nr ${nr} (${norm(x.r.chauffor)}, ${kortDato(x.r.dato)}) har ingen vagt inden for ${cfg.NR_AFSTAND} numre (hverken hos denne eller andre chauffører).`));
+      }
+    });
 
     // 3) Overlappende vagter (samme chauffør, eller samme bil). Samme nr i samme bil er en dublet (punkt 1), ikke et overlap.
     const med = t.filter(x => x.iv);
@@ -162,7 +208,7 @@
       if (!sammeCh && !sammeBil) continue;
       const min = Math.min(x.iv.e, y.iv.e) - Math.max(x.iv.s, y.iv.s);
       if (min > cfg.OVERLAP_TOLERANCE_MIN) {
-        const hvorfor = sammeCh && sammeBil ? "samme chauffør og samme bil" : sammeCh ? "samme chauffør" : "samme bil " + x.bil;
+        const hvorfor = sammeCh && sammeBil ? "samme chauffør og samme bil" : sammeCh ? "samme chauffør" : "samme bil (" + raekkeTekst(x) + ")";
         fund.push(lavFund("overlap", "overlap|" + x.r.id + "," + y.r.id, [x.r, y.r],
           `${kortNavn(x.r)} ${x.r.vagt_start}–${x.r.vagt_slut} og ${kortNavn(y.r)} ${y.r.vagt_start}–${y.r.vagt_slut} overlapper ${min} min (${hvorfor}).`));
       }
@@ -197,8 +243,8 @@
       }
     });
 
-    // 7) Huller i nummerrækken, pr. bil. Hvert hul rapporteres én gang: i den måned, hvor vagten efter hullet ligger.
-    const pr = new Map();   // bil -> (nr -> lavest id)
+    // 7) Huller i nummerrækken, pr. række (naboer ±NR_AFSTAND, eller taxi_nr når den findes). Et hul rapporteres én gang: i måneden efter hullet.
+    const pr = new Map();   // række/bil -> (nr -> lavest id)
     t.filter(x => x.bil && x.nrTal !== null).forEach(x => {
       if (!pr.has(x.bil)) pr.set(x.bil, new Map());
       const m = pr.get(x.bil), nu = m.get(x.nrTal);
@@ -208,11 +254,11 @@
       const nr = [...m.keys()].sort((a, b) => a - b);
       for (let i = 1; i < nr.length; i++) {
         const a = nr[i - 1], b = nr[i];
-        if (b - a > 1 && m.get(b).valgt) {
+        if (b - a > 1 && b - a <= cfg.NR_AFSTAND && m.get(b).valgt) {   // større spring er en anden række, ikke et hul
           const ra = m.get(a).r, rb = m.get(b).r, antal = b - a - 1;
           const mangler = antal === 1 ? `nr ${a + 1}` : antal <= 6 ? `nr ${Array.from({ length: antal }, (_, k) => a + 1 + k).join(", ")}` : `nr ${a + 1}–${b - 1} (${antal} numre)`;
-          fund.push(lavFund("hul_i_raekken", `hul_i_raekken|${bil}|${a}|${b}`, [ra, rb],
-            `${bil}: ${mangler} mangler mellem nr ${a} (${norm(ra.chauffor)}, ${kortDato(ra.dato)}) og nr ${b} (${norm(rb.chauffor)}, ${kortDato(rb.dato)}).`, { bil, fra: a, til: b }));
+          fund.push(lavFund("hul_i_raekken", `hul_i_raekken|${a}|${b}`, [ra, rb],
+            `${raekkeTekst(m.get(b))}: ${mangler} mangler mellem nr ${a} (${norm(ra.chauffor)}, ${kortDato(ra.dato)}) og nr ${b} (${norm(rb.chauffor)}, ${kortDato(rb.dato)}).`, { bil, fra: a, til: b }));
         }
       }
     }
@@ -232,5 +278,5 @@
     return kontrolMaaned(alle, NY, cfg).fund.filter(f => f.raekker.includes(alle[0].id));
   }
 
-  return { STANDARD, TYPER, FORSLAG, kontrolMaaned, tjekNy, bilFraNr, vagtInterval, overlapMinutter, storDifference, vagtLaengdeMin, fingeraftryk };
+  return { STANDARD, TYPER, FORSLAG, kontrolMaaned, tjekNy, nummerSerier, bilFraNr, vagtInterval, overlapMinutter, storDifference, vagtLaengdeMin, fingeraftryk };
 });
