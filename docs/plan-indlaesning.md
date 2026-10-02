@@ -14,7 +14,7 @@ kørselskontorer (Dantaxi, DRIVR, Taxa 4x27, 4x35, Uber m.fl.).
 ## Arkitektur
 ```
 index.html ──► Edge Function "modtag-slutrapport"
-                 ├─ /analyser: token → gem billede → adapter[kilde].udtraek → kontroller → forslag til chaufføren
+                 ├─ /analyser: token → gem billede → klassificér (kilde fra overskrift, bontype) → adapter[kilde].udtraek → kontroller → forslag til chaufføren
                  └─ /bekraeft: chaufføren siger "Ja" → række i slutrapporter med status
         adapter (én pr. kilde)        kerne (fælles, kilde-uafhængig)
         - OCR-prompt + JSON-skema      - dublet (kilde + taxi_nr + nr, og samme billede)
@@ -23,16 +23,30 @@ index.html ──► Edge Function "modtag-slutrapport"
                                        - log af hver indlæsning
 ```
 - Normaliseret vagt: kilde, taxi_nr, slutrapport_nr, dato (vagt start), vagt_slut_dato, vagt_start,
-  vagt_slut, indkort, overfort, bro_faerge, afregn + `raa_data` (kildens originale felter).
+  vagt_slut, indkort, overfort, bro_faerge, afregn + `raa_data` (kildens originale felter). Dertil:
+  `chauffor_id` (CHAUFFØR-nr på bonen) og de valgfrie `pause_tid` og `arbejdstid` (gemmes som minutter; tomme, når bonen ikke har dem).
+  Bontype (`endelig` / `foreloebig` / `ukendt`) hører til indlæsningen, ikke til vagten: kun endelige boner kan blive til en vagt.
 - Adapter-mappe pr. kilde (`adapters/dantaxi/`): `prompt.md`, `skema.json`, `kontroller.ts`, `eksempler/`,
   testsæt. Ny kilde = ny mappe + række i `kilder`. CSV/API får samme grænseflade som foto og foretrækkes.
 - Intet forsvinder: ubekræftede uploads (> 2 t) → "Til godkendelse"; alle forsøg logges.
-- `afvist` kun ved dublet eller helt ulæseligt billede; alt andet med fejlet kontrol → `til_godkendelse`.
+- `afvist` kun ved dublet, helt ulæseligt billede eller foreløbig bon (med tydelig besked til chaufføren); alt andet med fejlet kontrol → `til_godkendelse`.
+- **Flere kilder, kun Dantaxi bygges.** Designet bærer flere kørselskontorer (Taxi 4x27, DRIVR m.fl.), men der bygges ingen adapter til dem nu.
+  En bon, hvis overskrift hører til en kilde uden adapter, bliver ikke forsøgt udtrukket som Dantaxi, men sendt til `til_godkendelse`
+  med billedet og beskeden "kilde ikke understøttet endnu".
+- **Klassificér først, udtræk bagefter.** Første trin læser kun overskriften (kilde) og bontype. Først derefter vælges adapteren, så en
+  anden kildes bon aldrig fortolkes med Dantaxis skema. Så længe der kun findes én adapter, kan de to trin være ét kald med to ekstra felter,
+  men kilden og bontypen kontrolleres altid, før resten af svaret bruges.
+- **Chauffør og kilde er kobling, ikke bil.** Tabellen `chauffoer_kilder` (chauffor, kilde, chauffor_id) siger, hvilke kilder en chauffør
+  bruger, og hvilket CHAUFFØR-nr chaufføren har dér. Nummeret er pr. kilde (samme chauffør kan have forskellige numre hos forskellige
+  kontorer). Den har intet med bilen at gøre (beslutning 9).
 - Satser pr. kilde designes (ikke bygget). `virksomhed_id` på nye tabeller og `slutrapporter`.
 
 ## Kontroller (Dantaxi)
 | Kontrol | Fejler → |
 |---|---|
+| **kilde:** overskriften på bonen (DANTAXI, Taxi 4x27 …) slås op i `kilder.overskrifter` og sammenlignes med chaufførens kilde(r) i `chauffoer_kilder`. Passer den ikke til nogen af chaufførens kilder, eller kendes overskriften ikke, eller kan den ikke læses → intet gættes | til_godkendelse |
+| **bontype:** `foreloebig` afvises med beskeden "Det her er en foreløbig slutrapport. Upload den endelige, når vagten er afsluttet." Foreløbige boner gemmes ikke som vagt og optager aldrig dublet-nøglen. `ukendt` (kan ikke afgøres) auto-godkendes aldrig | afvist (foreløbig) / til_godkendelse (ukendt) |
+| **dato:** læses af datoparseren (se nedenfor). Tvetydig dato, hvor kilden ikke har fastlagt formatet, eller en dato der ikke kan læses | til_godkendelse |
 | konto + kreditkort + kredit ekstra = overført | til_godkendelse |
 | indkørt − overført − bro = afregn | til_godkendelse |
 | vagt_slut_dato = dato eller dato + 1 | til_godkendelse |
@@ -44,15 +58,39 @@ index.html ──► Edge Function "modtag-slutrapport"
 | samme billede uploadet igen (fingeraftryk af filen) | afvist |
 | vagt slut før upload, og upload senest 48 t efter vagt slut | til_godkendelse |
 | FØRER-navnet på bonen identificerer chaufføren og **sammenlignes med chaufførens link** (den chauffør, der uploadede). Afvigelse giver `til_godkendelse`. Kontrolleres **kun når navnet står på bonen**: mangler linjen (KOPI-bon), er det ikke en fejl | til_godkendelse |
-| rimelige beløb og vagtlængde (fx ≤ 16 t) | til_godkendelse |
+| **CHAUFFØR-nr** (`chauffor_id`) på bonen sammenlignes med den chauffør, der uploadede (nummeret i `chauffoer_kilder` for bonens kilde). Afvigelse giver `til_godkendelse`. Kontrolleres **kun når nummeret står på bonen**. Hvis FØRER-navn og CHAUFFØR-nr begge står der og peger på hver sin chauffør, vises begge afvigelser | til_godkendelse |
+| rimelige beløb | til_godkendelse |
+| **vagtlængde** regnes på `arbejdstid`, når den står på bonen, ellers på brutto (vagt_start → vagt_slut, med slutdato). Grænsen er 24 t i begge tilfælde (gammel grænse på 16 t er fjernet; en 24-timers vagt er ikke urimelig). Arbejdstid større end brutto fejler. Mangler pause/arbejdstid, er det ikke en fejl | til_godkendelse |
+| *(forslag)* hvis både pause_tid, arbejdstid og brutto står på bonen: arbejdstid + pause = brutto (±5 min) | til_godkendelse |
 
 "Forkert auto-godkendelse" = mindst ét af chauffør, taxi_nr, nr, dato, indkørt, overført, bro eller afregn
-afviger fra facit.
+afviger fra facit. Afvigelse på chauffor_id, kilde eller bontype tæller også.
+
+## Datoparser (design; bygges i trin 3 som ren funktion med enhedstests)
+Bonens datoer kan stå i flere formater, og formatet kan være forskelligt fra kilde til kilde. Parseren returnerer `{dato, format, tvetydig}`
+eller en fejl, aldrig en gætning.
+
+| Format | Eksempel | Bemærkning |
+|---|---|---|
+| åååå-mm-dd | 2026-09-06 | ISO |
+| åååå-dd-mm | 2026-06-09 | findes på nogle boner |
+| dd-mm-åååå, dd.mm.åååå, dd/mm/åååå | 06.09.2026 | |
+| dd/mm/åå, dd.mm.åå | 06/09/26 | tocifret år: 20åå |
+| dato med månedsnavn | 6. sep 2026, 6 SEP 26 | danske og engelske forkortelser |
+
+Regler:
+1. **Hver kilde fastlægger sine formater** i adapteren (`kilder.datoformater`, i prioriteret rækkefølge). Parseren prøver kun dem.
+2. **Tvetydighed:** hvis både dag og måned er ≤ 12 (06-09 kan være 6/9 eller 9/6), og kilden ikke har fastlagt præcis ét format, er datoen `tvetydig`
+   → `til_godkendelse`. Gælder især åååå-dd-mm mod åååå-mm-dd.
+3. **Datovinduet afgør, når kun én tolkning er mulig:** ligger kun én tolkning inden for 60 dage og ikke i fremtiden, bruges den, og valget logges. Ligger begge i vinduet, men er forskellige → `til_godkendelse`.
+4. Ugyldige datoer (31/2, måned 13, år uden for 2020–2099) er fejl. OCR-fejl i året (fx 2023 i stedet for 2026) fanges af datovinduet.
+5. Formatet, der blev brugt, gemmes i `indlaesninger` og `raa_data`, så en forkert tolkning kan spores bagefter.
 
 ## Trin
 0. **Tests og testmiljø** — `tests/` + GitHub Actions; separat gratis Supabase-projekt til test.
 1. **Database (kun tilføjelser)** — kolonner på `slutrapporter` (kilde, taxi_nr, status, kontroller,
-   raa_data, billede_sti, indlaesning_id, virksomhed_id); tabeller `kilder`, `taxier`, `indlaesninger`,
+   raa_data, billede_sti, indlaesning_id, virksomhed_id, chauffor_id, pause_min, arbejdstid_min); tabeller `kilder` (inkl. `overskrifter` og
+   `datoformater`), `chauffoer_kilder` (chauffor, kilde, chauffor_id), `taxier`, `indlaesninger` (inkl. bontype og brugt datoformat),
    `virksomheder`; **unik nøgle (kilde, taxi_nr, slutrapport_nr) uden chauffør**, hvor taxi_nr er udfyldt, så samme bon ikke kan
    ligge hos to chauffører (som nr 1112 hos både Adan og Fuad i september). Indsættelse og `opret_slutrapport` tjekker dublet på samme
    nøgle. Nøglen oprettes **først**, når der ikke er samme bon hos to chauffører: forespørgsel
@@ -64,7 +102,8 @@ afviger fra facit.
    rettes manuelt; intet køres før listen er godkendt.
 2. **Lønberegning** — kun `status = 'godkendt'`; kontant = afregn = indkørt − overført − bro;
    **udbetaling = andel − afregn** (bro trækkes ikke fra igen). FØR/EFTER pr. chauffør for 2026-09 først.
-3. **Kontroller som ren kode** med enhedstests (18/19, 5/6, 6/8, 3/8, VDT 2303, taxi "001", KALIB-år, afskåret).
+3. **Kontroller som ren kode** med enhedstests (18/19, 5/6, 6/8, 3/8, VDT 2303, taxi "001", KALIB-år, afskåret, datoparser med alle formater og tvetydighed,
+   kilde mod chaufførens kilde, CHAUFFØR-nr mod uploader, foreløbig/endelig bon, vagtlængde på arbejdstid og brutto).
 4. **Edge Function `modtag-slutrapport`** (Dantaxi) — OpenAI structured outputs (strict), nøglen kun som
    secret; billede i `slutrapport-billeder` som `dantaxi/{taxi_nr}/{åååå-mm}/{id}.jpg`; kun test-projektet;
    OCR-test på ca. 20 rigtige boner (krav: 0 forkerte auto-godkendelser).
@@ -93,6 +132,15 @@ afviger fra facit.
 14. FØRER-navnet på bonen sammenlignes med chaufførens link (uploaderen). Afvigelse giver `til_godkendelse`.
 15. Et nummer i 11xx, 16xx eller 18xx skal passe til bilens `taxi_nr` (11xx = 001-7144, 16xx = 001-8646, 18xx = 001-8208); ellers `til_godkendelse`.
 16. Den unikke nøgle oprettes først, når der ikke er samme bon hos to chauffører. En læse-forespørgsel (`supabase/forespoergsler/taxi_nr_4_samme_bon_hos_flere_chauffoerer.sql`) viser alle par (samme bil, samme nr, forskellige chauffører), og migrationen starter med en vagt (`taxi_nr_5_vagt_foer_unik_noegle.sql`), der stopper med en tydelig fejl, hvis der stadig er nogen. Intet ændres da.
+
+## Beslutninger (ejeren, 2026-10-02) — design nu, byg ikke 4x27/DRIVR
+17. **CHAUFFØR-nr:** bonens felt `chauffor_id` sammenlignes med den chauffør, der uploadede. Afvigelse giver `til_godkendelse`. Kontrolleres kun, når feltet står på bonen.
+18. **Pause og arbejdstid:** `pause_tid` og `arbejdstid` er valgfrie felter. "Rimelig vagtlængde" regnes på arbejdstid, eller brutto ≤ 24 t; grænsen på 16 t udgår.
+19. **Kilde:** kilden aflæses af bonens overskrift (DANTAXI, Taxi 4x27 …) og sammenlignes med chaufførens kilde. Afvigelse giver `til_godkendelse`.
+20. **Bontype:** `foreloebig` / `endelig`. Foreløbige boner afvises med tydelig besked.
+21. **Datoparser:** skal kunne håndtere flere formater (fx åååå-dd-mm), med faste regler for tvetydige datoer (se Datoparser ovenfor).
+
+Kun Dantaxi bygges. De øvrige kilder (Taxi 4x27, DRIVR m.fl.) er kun med i designet.
 
 ## Biler
 Alle chauffører kan køre alle tre vogne; bilen findes ud fra nummerområdet (og fra `taxi_nr` på bonen), ikke ud fra chaufføren.
