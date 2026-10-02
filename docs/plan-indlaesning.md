@@ -125,7 +125,7 @@ Regler:
 4. **Edge Function `modtag-slutrapport`** (Dantaxi) — OpenAI structured outputs (strict), nøglen kun som
    secret; billede i `slutrapport-billeder` som `dantaxi/{taxi_nr}/{åååå-mm}/{id}.jpg`; kun test-projektet;
    OCR-test på ca. 20 rigtige boner (krav: 0 forkerte auto-godkendelser).
-5. **Skærme** — index.html bekræft-trin ("Ja, send" / "Nej, tag nyt billede" / "Send til godkendelse
+5. **Skærme** (se også `docs/plan-scan-foer-send.md`: lag 1 lokal billedtest, lag 2 `/analyser`) — index.html bekræft-trin ("Ja, send" / "Nej, tag nyt billede" / "Send til godkendelse
    alligevel") bag `?ny=1`; dashboard "Til godkendelse" (genbruger "Udfyld og godkend").
 6. **Drift** — dagligt job (pg_cron + pg_net) → e-mail via Resend; log af hver indlæsning.
 7. **Overgang** — 2 ugers skyggedrift (ny funktion skriver kun til log), daglig sammenligning, skift af
