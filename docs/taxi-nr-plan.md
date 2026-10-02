@@ -1,8 +1,8 @@
 # Plan: taxi_nr som nøgle (ikke påbegyndt; udføres i trin 1.1)
 
-Slutrapport-nummeret tæller pr. **bil** (taxameter), ikke pr. chauffør. Der er **ingen fast bil pr. chauffør**:
-alle chauffører kan køre alle tre vogne (Abdikarin er afløser uden vagter i september). Derfor er
-(chauffor, slutrapport_nr) ikke en præcis nøgle, og nummer-kontrollen sammenligner med alle chaufførers vagter.
+Slutrapport-nummeret tæller pr. **bil** (taxameter), ikke pr. chauffør. Bilerne er **faste som udgangspunkt** (standardbil pr. chauffør: Adan 001-7144, Fuad og Faysal 001-8646,
+Qaalid 001-8208), men en anden bil kan forekomme (fx Adan på 001-8646 den 3/9): en markering, ikke en fejl (Abdikarin er afløser uden standardbil). Derfor er
+(chauffor, slutrapport_nr) ikke en præcis nøgle, og nummer-kontrollen sammenligner med alle chaufførers vagter. Standardbilen bruges ikke til at gætte taxi_nr.
 
 ## Biler og nummerområder (bekræftet af ejeren 28/9 og 30/9-2026)
 

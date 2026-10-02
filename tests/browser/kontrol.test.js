@@ -57,6 +57,7 @@ async function aabn(browser, db, opts) {
       if (body.p_token !== 'ejer') return route.fulfill({ json: [] });
       if (fn === 'hent_alle') return route.fulfill({ json: ['2026-09', '2026-10'].filter(m => !body.p_maaned || m === body.p_maaned).map(m => ({ chauffor: 'Adan', regnskabsmaaned: m, antal_ture: 1, indkort_i_alt: 1000, overfort_i_alt: 1000, afregn_difference: 0, kontant_i_alt: 0, bro_faerge_i_alt: 0, model: '48%', andel_brutto: 480, til_udbetaling: 480 })) });
       if (fn === 'hent_ture') return route.fulfill({ json: db.rows.filter(r => regnskab(r.dato) === body.p_maaned) });
+      if (fn === 'hent_chauffoer_biler') return db.biler ? route.fulfill({ json: db.biler }) : route.fulfill({ status: 404, json: { message: 'function not found' } });
       if (fn === 'hent_kontrol_ok') return db.okMangler ? route.fulfill({ status: 404, json: { message: 'function not found' } }) : route.fulfill({ json: db.okNu().map(l => ({ noegle: l.noegle, type: l.type, hvem: 'ejer (dashboard)', tidspunkt: '2026-10-02T10:00:00Z' })) });
       if (fn === 'saet_kontrol_ok') {
         if (db.okMangler) return route.fulfill({ status: 404, json: { message: 'function not found' } });
@@ -204,6 +205,30 @@ const skrivEnd = db => db.kald.filter(k => /^(ret_slutrapport|opret_slutrapport|
     check(await antal(page) === '6 fund' && await spm(page) === '2 spørgsmål' && (await page.$$('#kontrolCard .btn-ok')).length === 0, `${navn}: uden migrationen vises alle 6 fund og 2 spørgsmål, men ingen OK-knapper`);
     check((await page.textContent('#kontrolInfo')).includes('ikke slået til'), `${navn}: uden migrationen står der, at markering ikke er slået til`);
     check(fejl.length === 0, `${navn}: uden migrationen ingen JS-fejl`);
+    await ctx.close();
+
+    // 7b) Standardbil pr. chauffør: anden bil = markering, ikke fejl (Adan på 001-8646 den 9/9)
+    const std = [2, 3, 4, 5, 6].map((d, i) => v('a' + i, `2026-09-0${d}`, String(1100 + i), 'Adan', 3000 + i, 3000 + i, '06:00', '14:00'))
+      .concat([2, 3, 4, 5, 6, 7].map((d, i) => v('f' + i, `2026-09-0${d}`, String(1600 + i), i % 2 ? 'Faysal' : 'Fuad', 2500 + i, 2500 + i, '06:00', '14:00')))
+      .concat([v('aX', '2026-09-09', '1606', 'Adan', 3300, 3300, '06:00', '14:00', { billede_url: 'https://example.test/ax.jpg' })]);
+    const db4 = lavDb(); db4.rows = std;
+    ({ ctx, page, fejl } = await aabn(browser, db4, opts));
+    check(await antal(page) === 'Ingen fund ✓' && (await page.textContent('#kontrolMarkeringAntal')) === '1 markering' && (await spm(page)) === '', `${navn}: anden bil end standard er en markering ("1 markering"), ikke et fund ("Ingen fund ✓")`);
+    const mkTxt = await page.$eval('#kontrolMarkeringer', d => d.textContent);
+    check(mkTxt.includes('Markeringer: anden bil end standard') && mkTxt.includes('Adan kørte 001-8646') && mkTxt.includes('Standardbilen er 001-7144') && mkTxt.includes('en anden bil kan forekomme'), `${navn}: markeringen siger, hvilken bil Adan kørte, og hvad standarden er`);
+    check((await page.textContent('#kontrolInfo')).includes('Standardbiler: indbygget'), `${navn}: uden databasen bruges de indbyggede standardbiler (og det står der)`);
+    await page.click('#kontrolMarkeringer [data-aabn="aX"]');
+    await page.waitForSelector('#ret-aX:not(.hidden)');
+    check(await page.inputValue('#driver') === 'Adan' && await page.isVisible('#ret-aX img.ret-billede'), `${navn}: markeringen har knap til rækken (Åbn i Ret med billede)`);
+    await page.click('#kontrolMarkeringer .btn-ok');
+    await page.waitForFunction(() => document.getElementById('kontrolMarkeringAntal').classList.contains('hidden'));
+    check(db4.okLog.length === 1 && db4.okLog[0].type === 'afvigende_bil' && db4.okLog[0].noegle.startsWith('afvigende_bil|aX|') && skrivEnd(db4).length === 0, `${navn}: "Kendt – OK" gemmes (afvigende_bil|aX|…) og ændrer ingen vagter`);
+    await ctx.close();
+    // Standardbilen kommer fra databasen, når den findes: Adan = 8646 -> ingen afvigelse
+    const db5 = lavDb(); db5.rows = std; db5.biler = [{ chauffor: 'Adan', taxi_nr: '001-8646' }, { chauffor: 'Fuad', taxi_nr: '001-8646' }, { chauffor: 'Faysal', taxi_nr: '001-8646' }];
+    ({ ctx, page, fejl } = await aabn(browser, db5, opts));
+    check(await antal(page) === 'Ingen fund ✓' && (await page.$eval('#kontrolMarkeringAntal', e => e.classList.contains('hidden'))) && (await page.textContent('#kontrolInfo')).includes('Standardbiler: databasen'), `${navn}: standardbilerne hentes fra databasen (Adan = 8646: ingen markering)`);
+    check(fejl.length === 0, `${navn}: ingen JS-fejl`);
     await ctx.close();
 
     // 8) Ingen fund

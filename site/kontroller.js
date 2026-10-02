@@ -29,6 +29,10 @@
     // markeres som den kendte OCR-fejl. Intervallet er et skøn ud fra de to eksempler og rettes her, når det rigtige kendes.
     VDT_FRA: 2200,
     VDT_TIL: 2399,
+    // Bilerne er faste SOM UDGANGSPUNKT pr. chauffør (standard, ikke regel). En anden bil kan forekomme (fx Adan på 001-8646 den 3/9);
+    // det giver en markering, ikke en fejl. Nøglerne er små bogstaver. Dashboardet henter dem fra databasen (chauffoer_biler); dette er standardværdien.
+    STANDARD_BIL: { adan: "001-7144", fuad: "001-8646", faysal: "001-8646", qaalid: "001-8208" },
+    OMS_TOLERANCE_KR: 1,      // omsætning mellem boner: afvigelser på op til 1 kr ignoreres (afrunding)
     // KUN til at udfylde taxi_nr på gamle rækker og til kontrollen mod taxi_nr fra bonen (bilFraNr). Bruges IKKE af områdetjekket.
     OMRAADER: [
       { taxi_nr: "001-7144", fra: 1100, til: 1199 },
@@ -52,6 +56,10 @@
     stor_difference:      { rang: 6, titel: "Stor difference" },
     vagtlaengde:          { rang: 7, titel: "Mistænkelig vagtlængde" },
     hul_i_raekken:        { rang: 8, titel: "Mangler der en bon?", spoergsmaal: true },   // et spørgsmål, ikke en fejl
+    vagt_mangler:         { rang: 9, titel: "Vagt mangler (omsætning)" },
+    omsaetning_passer_ikke: { rang: 10, titel: "Omsætning passer ikke mellem boner" },
+    taeller_faldt:        { rang: 11, titel: "Tællerens TOTAL faldt" },
+    afvigende_bil:        { rang: 12, titel: "Anden bil end standard", markering: true },   // en markering, ikke en fejl
   };
 
   const FORSLAG = {
@@ -62,6 +70,10 @@
     samme_dato_beloeb:    "Samme dato og samme indkørte beløb ligner den samme bon indlæst to gange. Tjek billederne.",
     stor_difference:      "Tjek indkørt og overført på billedet (OCR-fejl er almindelige), og ret med Ret.",
     vagtlaengde:          "Tjek start- og sluttid på billedet, og ret med Ret.",
+    vagt_mangler:         "TOTAL DKK steg mere, end den senere bon forklarer: der er kørt mindst én vagt imellem, som ikke er uploadet. Find bonen (eller chaufføren, hvis bilen er kørt uden for lønsystemet), og tilføj den med Udfyld og godkend.",
+    omsaetning_passer_ikke: "Numrene følger hinanden, men tælleren og bonens omsætning (taxameter + fastpris) passer ikke. Oftest er et tal forlæst: tjek TOTAL DKK, taxameter og fastpris på begge billeder, og ret med Ret.",
+    taeller_faldt:        "TOTAL DKK er lavere på den senere bon. Enten er et tal forlæst, eller tælleren er nulstillet. Tjek begge billeder.",
+    afvigende_bil:        "Ingen fejl: en anden bil kan forekomme. Markér OK, når du kender grunden. Er nummeret forlæst (så rækken i virkeligheden er standardbilens), rettes det med Ret.",
     hul_i_raekken:        "Er det en bon, der ikke er uploadet? Så tilføjes den (Udfyld og godkend, eller chaufføren uploader den). Eller er bilen kørt af en chauffør uden for lønsystemet? Så markér hvert nummer som kendt hul.",
   };
 
@@ -130,10 +142,58 @@
   // Kort, stabil fingeraftryk af de værdier, et fund bygger på. Ændres en række (fx med Ret), får fundet ny nøgle,
   // så et gammelt "kontrolleret – OK" ikke dækker over en ny situation.
   function fingeraftryk(raekker) {
-    const s = raekker.map(r => [r.id, r.dato, nrTekst(r), norm(r.chauffor), tal(r.indkort), tal(r.overfort), norm(r.vagt_start), norm(r.vagt_slut)].join("~")).join("|");
+    const s = raekker.map(r => [r.id, r.dato, nrTekst(r), norm(r.chauffor), tal(r.indkort), tal(r.overfort), norm(r.vagt_start), norm(r.vagt_slut)]
+      .concat(r.total_dkk !== undefined || r.taxameter !== undefined || r.fastpris !== undefined ? [tal(r.total_dkk), tal(r.taxameter), tal(r.fastpris)] : []).join("~")).join("|");
     let h = 0x811c9dc5;
     for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 0x01000193) >>> 0; }
     return h.toString(36);
+  }
+
+  const afrund2 = n => Math.round(n * 100) / 100;
+  const kr2 = n => { const a = Math.abs(n), h = Math.round(a * 100) / 100; const [h1, d] = h.toFixed(2).split("."); return (n < 0 ? "−" : "") + heleKr(Number(h1)) + (d === "00" ? "" : "," + d); };
+
+  /**
+   * Omsætning mellem boner. Hver bon har tællerne TOTAL DKK og ANTAL TURE (kumulative) samt vagtens egen omsætning (taxameter + fastpris).
+   * For to boner i samme bil (A før B, i nummerrækkefølge) skal TOTAL(B) − TOTAL(A) = taxameter(B) + fastpris(B) + omsætningen i de vagter, der ligger imellem.
+   * Hul i nummer med 0 kr imellem er en TOM vagt og ikke en fejl. Er der kroner til overs, mangler en vagt (mindst så mange kr).
+   * @param raekker  [{ id, slutrapport_nr, taxi_nr?, dato, chauffor, total_dkk, ture_kum?, taxameter, fastpris, ture? }]  (felter som tal eller tekst)
+   * @returns { led: [...] }  ét led pr. to nabo-boner i samme bil:
+   *   { type: "ok"|"tom_vagt"|"vagt_mangler"|"omsaetning_passer_ikke"|"taeller_faldt"|"ukendt", fra, til, numre: [manglende numre], diff, forventet, mangler, mangler_ture }
+   */
+  function omsaetningMellemBoner(raekker, cfg) {
+    cfg = Object.assign({}, STANDARD, cfg || {});
+    const rs = (raekker || []).filter(r => r && r.id != null && /^[0-9]{4}$/.test(nrTekst(r)));
+    const serie = nummerSerier(rs.map(r => Number(nrTekst(r))), cfg.NR_AFSTAND);
+    const pr = new Map();   // bil -> (nr -> række med lavest id)
+    rs.forEach(r => {
+      const n = Number(nrTekst(r)), bil = r.taxi_nr ? norm(r.taxi_nr) : "række " + serie.get(n).id;
+      if (!pr.has(bil)) pr.set(bil, new Map());
+      const m = pr.get(bil), nu = m.get(n);
+      if (!nu || r.id < nu.id) m.set(n, r);
+    });
+    const led = [];
+    for (const [bil, m] of pr) {
+      const nr = [...m.keys()].sort((a, b) => a - b);
+      for (let i = 1; i < nr.length; i++) {
+        const A = m.get(nr[i - 1]), B = m.get(nr[i]);
+        const numre = Array.from({ length: nr[i] - nr[i - 1] - 1 }, (_, k) => nr[i - 1] + 1 + k);
+        const tA = tal(A.total_dkk), tB = tal(B.total_dkk), tx = tal(B.taxameter), fp = tal(B.fastpris);
+        const l = { bil, fra: A, til: B, numre, type: "ukendt", diff: null, forventet: null, mangler: null, mangler_ture: null };
+        if (tA !== null && tB !== null && tx !== null) {
+          l.diff = afrund2(tB - tA);
+          l.forventet = afrund2(tx + (fp === null ? 0 : fp));
+          l.mangler = afrund2(l.diff - l.forventet);
+          const kA = tal(A.ture_kum), kB = tal(B.ture_kum), eget = tal(B.ture);
+          if (kA !== null && kB !== null && eget !== null) l.mangler_ture = (kB - kA) - eget;
+          if (l.diff < 0) l.type = "taeller_faldt";
+          else if (Math.abs(l.mangler) <= cfg.OMS_TOLERANCE_KR) l.type = numre.length ? "tom_vagt" : "ok";
+          else if (l.mangler > 0) l.type = numre.length ? "vagt_mangler" : "omsaetning_passer_ikke";
+          else l.type = "omsaetning_passer_ikke";
+        }
+        led.push(l);
+      }
+    }
+    return { led };
   }
 
   /** Nøglen til "kendt hul" for ét manglende nummer. Et nummer findes kun i én række, så nummeret alene er entydigt. */
@@ -170,6 +230,21 @@
       && (!(x.r.taxi_nr && u.r.taxi_nr) || norm(x.r.taxi_nr) === norm(u.r.taxi_nr)));
     const raekkeTekst = x => x.serie ? `række ${x.serie.fra}–${x.serie.til}` : "ukendt række";
     const fund = [];
+
+    // Hver nummer-række får den bil, flest af de chauffører, der kører i den, har som standard (ved lighed eller færre end 2 stemmer: ukendt).
+    const stdBil = r => { const v = (cfg.STANDARD_BIL || {})[norm(r.chauffor).toLowerCase()]; return v ? norm(v) : null; };
+    const stemmer = new Map();   // serie-id -> (bil -> antal)
+    t.forEach(x => { const b = x.serie && !x.r.taxi_nr ? stdBil(x.r) : null; if (b) { if (!stemmer.has(x.serie.id)) stemmer.set(x.serie.id, new Map()); const m = stemmer.get(x.serie.id); m.set(b, (m.get(b) || 0) + 1); } });
+    const serieBil = new Map();
+    for (const [id, m] of stemmer) {
+      const v = [...m.entries()].sort((p, q) => q[1] - p[1] || (p[0] < q[0] ? -1 : 1));
+      if (v.reduce((a, e) => a + e[1], 0) >= 2 && (v.length === 1 || v[0][1] > v[1][1])) serieBil.set(id, v[0][0]);
+    }
+    const koertBil = x => x.r.taxi_nr ? norm(x.r.taxi_nr) : x.serie ? serieBil.get(x.serie.id) || null : null;
+
+    // Omsætning mellem boner (kun hvis bonerne har TOTAL DKK m.m.)
+    const oms = omsaetningMellemBoner(alle, cfg), omsLed = new Map(oms.led.map(l => [nrTekst(l.fra) + "|" + nrTekst(l.til), l]));
+    const tomme = [];
 
     // 1) Samme nr hos flere chauffører (samme bil; uden for områderne tæller bilen som "ukendt")
     const grupper = new Map();
@@ -257,6 +332,8 @@
       const nr = [...m.keys()].sort((a, b) => a - b);
       for (let i = 1; i < nr.length; i++) {
         const a = nr[i - 1], b = nr[i];
+        const led = omsLed.get(a + "|" + b);
+        if (led && (led.type === "tom_vagt" || led.type === "vagt_mangler")) continue;   // omsætningen har svaret: tom vagt (ikke en fejl) eller vagt mangler (eget fund med beløb)
         if (b - a > 1 && b - a <= cfg.NR_AFSTAND && m.get(b).valgt) {   // større spring er en anden række, ikke et hul
           const ra = m.get(a).r, rb = m.get(b).r, antal = b - a - 1;
           const mangler = antal === 1 ? `nr ${a + 1}` : antal <= 6 ? `nr ${Array.from({ length: antal }, (_, k) => a + 1 + k).join(", ")}` : `nr ${a + 1}–${b - 1} (${antal} numre)`;
@@ -269,8 +346,34 @@
       }
     }
 
+    // 8) Anden bil end standard: en markering, ikke en fejl (bilerne er faste som udgangspunkt, men en anden bil kan forekomme)
+    t.filter(x => x.valgt).forEach(x => {
+      const std = stdBil(x.r), kb = koertBil(x);
+      if (std && kb && std !== kb)
+        fund.push(lavFund("afvigende_bil", "afvigende_bil|" + x.r.id, [x.r],
+          `${norm(x.r.chauffor)} kørte ${kb} (nr ${nrTekst(x.r)}, ${raekkeTekst(x)}) den ${kortDato(x.r.dato)}. Standardbilen er ${std}.`, { standard: std, koert: kb }));
+    });
+
+    // 9) Omsætning mellem boner: manglende vagter med beløb (erstatter spørgsmålet om hullet), og tomme vagter (0 kr imellem)
+    for (const l of oms.led) {
+      const tilT = t.find(x => x.r.id === l.til.id);
+      if (!tilT || !tilT.valgt) continue;
+      const navn = r => `nr ${nrTekst(r)} (${norm(r.chauffor)}, ${kortDato(r.dato)})`;
+      if (l.type === "tom_vagt") tomme.push({ fra: nrTekst(l.fra), til: nrTekst(l.til), numre: l.numre });
+      else if (l.type === "vagt_mangler" || l.type === "omsaetning_passer_ikke" || l.type === "taeller_faldt") {
+        const hvor = `${navn(l.fra)} → ${navn(l.til)}`;
+        const tekst = l.type === "vagt_mangler"
+          ? `Vagt mangler: nr ${l.numre.join(", ")} mellem ${hvor}. TOTAL DKK steg ${kr2(l.diff)} kr, men bon ${nrTekst(l.til)} forklarer kun ${kr2(l.forventet)} kr (taxameter + fastpris). Der mangler ${kr2(l.mangler)} kr`
+            + (l.mangler_ture !== null && l.mangler_ture > 0 ? ` og ${l.mangler_ture} ture.` : ".")
+          : l.type === "taeller_faldt"
+            ? `TOTAL DKK faldt ${kr2(-l.diff)} kr fra ${hvor}.`
+            : `TOTAL DKK steg ${kr2(l.diff)} kr fra ${hvor}, men bon ${nrTekst(l.til)} forklarer ${kr2(l.forventet)} kr (taxameter + fastpris): forskel ${kr2(l.mangler)} kr.`;
+        fund.push(lavFund(l.type, `${l.type}|${nrTekst(l.fra)}|${nrTekst(l.til)}`, [l.fra, l.til], tekst, { belob: l.mangler, numre: l.numre, spoergsmaal: false }));
+      }
+    }
+
     fund.sort((p, q) => TYPER[p.type].rang - TYPER[q.type].rang || (p.dato < q.dato ? -1 : p.dato > q.dato ? 1 : 0) || (p.identitet < q.identitet ? -1 : p.identitet > q.identitet ? 1 : 0));
-    return { fund, uden_tider: t.filter(x => x.valgt && !x.iv).length };
+    return { fund, tomme, uden_tider: t.filter(x => x.valgt && !x.iv).length };
   }
 
   /**
@@ -285,5 +388,5 @@
     return kontrolMaaned(alle, NY, cfg).fund.filter(f => f.raekker.includes(alle[0].id));
   }
 
-  return { STANDARD, TYPER, FORSLAG, kontrolMaaned, tjekNy, nummerSerier, hulNoegle, bilFraNr, vagtInterval, overlapMinutter, storDifference, vagtLaengdeMin, fingeraftryk };
+  return { STANDARD, TYPER, FORSLAG, kontrolMaaned, tjekNy, nummerSerier, omsaetningMellemBoner, hulNoegle, bilFraNr, vagtInterval, overlapMinutter, storDifference, vagtLaengdeMin, fingeraftryk };
 });

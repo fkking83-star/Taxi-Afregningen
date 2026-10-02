@@ -112,7 +112,9 @@
   .kontrol-antal.har-fund{background:#FFF1BF;color:#7A5F00}
   .kontrol-antal.ingen{background:var(--green-bg);color:var(--green)}
   .kontrol-antal.spoergsmaal{background:#E4EEFB;color:#1F4E8C}
+  .kontrol-antal.markering{background:#EEEEF2;color:#4A5160}
   .sp-h{margin:18px 0 0;font-size:15px}
+  .fund.mark{border-left:4px solid #9AA1AE}
   .fund.sp{border-left:4px solid #5B8DD6}
   .hul-naboer{margin-top:6px;display:grid;gap:6px}
   .hul-nabo{display:flex;flex-wrap:wrap;gap:4px 10px;align-items:center;font-size:14px;font-variant-numeric:tabular-nums}
@@ -222,11 +224,12 @@
   </div>
 
   <div class="card" id="kontrolCard">
-    <div class="kontrol-top"><h2>Kontrol af måneden</h2><span id="kontrolAntal" class="kontrol-antal">…</span><span id="kontrolSpoergsmaalAntal" class="kontrol-antal spoergsmaal hidden"></span></div>
+    <div class="kontrol-top"><h2>Kontrol af måneden</h2><span id="kontrolAntal" class="kontrol-antal">…</span><span id="kontrolSpoergsmaalAntal" class="kontrol-antal spoergsmaal hidden"></span><span id="kontrolMarkeringAntal" class="kontrol-antal markering hidden"></span></div>
     <div class="note" id="kontrolInfo">Henter…</div>
     <div class="kontrol-chips" id="kontrolChips"></div>
     <div id="kontrolListe"></div>
     <div id="kontrolSpoergsmaal"></div>
+    <div id="kontrolMarkeringer"></div>
     <div class="kontrol-fejl" id="kontrolFejl"></div>
     <div class="kontrol-bund">
       <button id="kontrolIgen" type="button">Kør kontrollen igen</button>
@@ -1064,9 +1067,10 @@ async function loadKontrol(m){
   let valgt;
   try{
     // Nabomånederne bruges kun som sammenligning (numre og vagter ved månedsskiftet); fejler de, kontrolleres måneden alene
-    const [v, foer, efter, ok] = await Promise.all([
+    const [v, foer, efter, ok, biler] = await Promise.all([
       hent(m), hent(maanedForskudt(m, -1)).catch(()=>[]), hent(maanedForskudt(m, 1)).catch(()=>[]),
-      rpc("hent_kontrol_ok", {p_token:OWNER_TOKEN}).then(x=>x||[]).catch(()=>null)
+      rpc("hent_kontrol_ok", {p_token:OWNER_TOKEN}).then(x=>x||[]).catch(()=>null),
+      rpc("hent_chauffoer_biler", {p_token:OWNER_TOKEN}).then(x=>x||[]).catch(()=>null)   // standardbil pr. chauffør; mangler funktionen, bruges standardværdien i kontroller.js
     ]);
     if(nr !== KONTROL.nr) return;   // en nyere kørsel er startet
     valgt = v;
@@ -1074,7 +1078,10 @@ async function loadKontrol(m){
     KONTROL.raekker = new Map(alle.map(r=>[r.id, r]));
     KONTROL.okVirker = ok !== null;
     KONTROL.ok = new Map((ok || []).map(o=>[o.noegle, o]));
-    KONTROL.res = Kontroller.kontrolMaaned(alle, m);
+    KONTROL.standardbiler = biler && biler.length ? "databasen" : "indbygget";
+    KONTROL.res = Kontroller.kontrolMaaned(alle, m, biler && biler.length
+      ? { STANDARD_BIL: Object.fromEntries(biler.filter(b=>b.chauffor && b.taxi_nr).map(b=>[String(b.chauffor).trim().toLowerCase(), String(b.taxi_nr).trim()])) }
+      : undefined);
     KONTROL.antal = v.length;
   }catch(e){
     if(nr !== KONTROL.nr) return;
@@ -1088,20 +1095,25 @@ async function loadKontrol(m){
 function renderKontrol(){
   const k = KONTROL, res = k.res; if(!res) return;
   const erSp = f => !!(Kontroller.TYPER[f.type] && Kontroller.TYPER[f.type].spoergsmaal);
-  const fejl = res.fund.filter(f=>!erSp(f)), huller = res.fund.filter(erSp);
+  const erMark = f => !!(Kontroller.TYPER[f.type] && Kontroller.TYPER[f.type].markering);
+  const fejl = res.fund.filter(f=>!erSp(f) && !erMark(f)), huller = res.fund.filter(erSp), markeringer = res.fund.filter(erMark);
+  const aabneMark = markeringer.filter(f=>!k.ok.has(f.noegle));
   const aabne = fejl.filter(f=>!k.ok.has(f.noegle)), okF = fejl.filter(f=>k.ok.has(f.noegle));
   const hulKendt = n => k.ok.has(Kontroller.hulNoegle(n));
   const aabneHuller = huller.filter(f=>f.mangler.some(n=>!hulKendt(n)));
   const kendteNr = huller.reduce((s,f)=>s + f.mangler.filter(hulKendt).length, 0);
-  const antalOk = okF.length + kendteNr;
+  const antalOk = okF.length + kendteNr + markeringer.filter(f=>k.ok.has(f.noegle)).length;
   if(!antalOk) k.visOk = false;   // intet kontrolleret at vise: afkrydsningen er skjult og må ikke blive hængende
   $("kontrolAntal").textContent = aabne.length ? `${aabne.length} fund` : "Ingen fund ✓";
   $("kontrolAntal").className = "kontrol-antal " + (aabne.length ? "har-fund" : "ingen");
   $("kontrolSpoergsmaalAntal").textContent = `${aabneHuller.length} spørgsmål`;
   $("kontrolSpoergsmaalAntal").classList.toggle("hidden", !aabneHuller.length);
+  $("kontrolMarkeringAntal").textContent = `${aabneMark.length} ${aabneMark.length === 1 ? "markering" : "markeringer"}`;
+  $("kontrolMarkeringAntal").classList.toggle("hidden", !aabneMark.length);
   $("kontrolInfo").textContent = `Regnskabsmåned ${k.maaned} · ${k.antal} vagter kontrolleret (nabomånederne bruges til sammenligning)`
     + (res.uden_tider ? ` · ${res.uden_tider} vagter uden tider kunne ikke tjekkes for overlap og længde` : "")
-    + (k.okVirker ? "" : " · Markering som kontrolleret er ikke slået til i databasen endnu (migrationen er ikke kørt); alle fund og spørgsmål vises.");
+    + (k.okVirker ? "" : " · Markering som kontrolleret er ikke slået til i databasen endnu (migrationen er ikke kørt); alle fund og spørgsmål vises.")
+    + ` · Standardbiler: ${k.standardbiler || "indbygget"}`;
   const pr = {}; aabne.forEach(f=>pr[f.type] = (pr[f.type]||0) + 1);
   $("kontrolChips").innerHTML = Object.keys(Kontroller.TYPER).filter(t=>pr[t]).map(t=>`<span class="kontrol-chip" data-type="${t}">${escAttr(Kontroller.TYPER[t].titel)}: ${pr[t]}</span>`).join("");
   const aabnKnap = id => { const r = k.raekker.get(id);
@@ -1141,6 +1153,22 @@ function renderKontrol(){
   const spHtml = huller.map(hulKort).join("");
   $("kontrolSpoergsmaal").innerHTML = spHtml
     ? `<h3 class="sp-h">Spørgsmål: mangler der en bon? (${aabneHuller.length})</h3><div class="note">Bilerne kan køres af chauffører uden for lønsystemet, så et hul i nummerrækken er ikke nødvendigvis en fejl. Markér hvert nummer, du kender, som kendt hul.</div>` + spHtml
+    : "";
+  // Markeringer: en anden bil end standard er ikke en fejl, men noget at vide
+  const markKort = (f, erOk) => {
+    const ok = !k.okVirker ? "" : erOk
+      ? `<button type="button" data-fortryd-ok="${escAttr(f.noegle)}">Fortryd</button>`
+      : `<button type="button" class="btn-ok" data-ok="${escAttr(f.noegle)}">Kendt – OK</button>`;
+    return `<div class="fund mark${erOk?" ok":""}" data-type="${f.type}" data-noegle="${escAttr(f.noegle)}">
+      <div class="fund-top"><b>${escAttr(f.titel)}</b><span class="fund-dato">${escAttr(kortDato(f.dato))}</span></div>
+      <div class="fund-tekst">${escAttr(f.tekst)}</div>
+      <div class="fund-forslag">${escAttr(f.forslag)}</div>
+      <div class="fund-knapper">${f.raekker.map(aabnKnap).join("")}${ok}</div></div>`;
+  };
+  const markKendte = markeringer.filter(f=>k.ok.has(f.noegle));
+  const markHtml = aabneMark.map(f=>markKort(f, false)).join("") + (k.visOk ? markKendte.map(f=>markKort(f, true)).join("") : "");
+  $("kontrolMarkeringer").innerHTML = markHtml
+    ? `<h3 class="sp-h">Markeringer: anden bil end standard (${aabneMark.length})</h3><div class="note">Bilerne er faste som udgangspunkt (standardbil pr. chauffør), men en anden bil kan forekomme. Det er en markering, ikke en fejl.</div>` + markHtml
     : "";
   $("kontrolVisOkLabel").classList.toggle("hidden", !(k.okVirker && antalOk));
   $("kontrolVisOk").checked = k.visOk;

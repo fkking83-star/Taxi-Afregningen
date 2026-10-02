@@ -27,7 +27,7 @@ kun beder ejeren om ét tryk, når noget ikke går op. **Ingen forkert løn må 
 | 0.6 | Make: `raa_data` i HTTP 110 og 121 (halvfærdigt) | 🟨 | Fejlkort forudfyldes med OCR-tal |
 | 0.7 | Migration `ocr_slutrapport_nr` (billedet forsvinder ikke ved Ret) | 🟩 | Billede følger rækken |
 | 0.8 | Backup: dagligt eksport af databasen (gratis plan har ingen automatisk gendannelse) | 🟦 + 🟨 | Gendannelse er afprøvet én gang |
-| 0.9 | Svar til Claude Code: e-mail til daglig oversigt. (Abdikarins bil udgår: der er ingen fast bil pr. chauffør, og han er afløser uden vagter i september) | 🟨 | Sendt |
+| 0.9 | Svar til Claude Code: e-mail til daglig oversigt. (Abdikarins bil udgår: han er afløser uden vagter og har ingen standardbil) | 🟨 | Sendt |
 | 0.10 | September-løn til revisor: Faysals boner, Qaalid ✓, tjek dubletter/⚠ | 🟨 | Sendt til revisor |
 
 ## Fase 1 — Ny indlæsning uden Make (hovedprojektet)
@@ -39,6 +39,7 @@ kun beder ejeren om ét tryk, når noget ikke går op. **Ingen forkert løn må 
 | 1.1 | Database udvides: kilde, taxi_nr, status, kontroller, raa_data, billede_sti, virksomhed_id + tabellerne kilder, taxier, indlæsninger, virksomheder. taxi_nr på gamle rækker udfyldes ud fra nummerområde (11xx = 001-7144, 16xx = 001-8646, 18xx = 001-8208), aldrig ud fra chaufføren; rækker uden for områderne vises først og rettes manuelt; den unikke nøgle (kilde, taxi_nr, slutrapport_nr) uden chauffør oprettes først, når der ikke er samme bon hos to chauffører (læse-forespørgsel viser alle par, og migrationen stopper med en tydelig fejl, hvis der stadig er nogen) | 🟦 |
 | 1.2 | Lønberegning: kun `status = godkendt`; kontant = afregn; udbetaling = andel − afregn | 🟩 |
 | 1.3 | Kontroller som ren kode med enhedstests (18/19, 5/6, 6/8, 3/8, VDT 2303, taxi "001", KALIB-år, afskåret) | 🟦 |
+| 1.3b | **Omsætning mellem boner:** TOTAL DKK og ANTAL TURE (kumulativt) fra hver bon; ΔTOTAL = taxameter + fastpris for vagterne imellem; afvigelse = "vagt mangler" med beløb; hul med 0 kr = tom vagt. Standardbil pr. chauffør (afvigelse = markering). **Engangsjob bagud** over alle billeder: `scripts/omsaetning-bagud` (kun læsning; prøve på 20 boner først) | 🟦 bygger, 🟨 kører jobbet |
 | 1.4 | Edge Function "modtag-slutrapport": OpenAI structured outputs, billede i privat bucket, log af hver indlæsning | 🟦 + 🟨 (deploy) |
 | 1.5 | Chaufførens bekræft-trin ("Nr 1683, 28/9, indkørt 5.046 — korrekt?") + "Til godkendelse" i dashboard | 🟦 |
 | 1.6 | OCR-test på ca. 20 rigtige boner | 🟨 leverer boner, 🟦 måler |

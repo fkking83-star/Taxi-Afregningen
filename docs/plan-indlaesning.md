@@ -22,7 +22,7 @@ index.html ──► Edge Function "modtag-slutrapport"
         - eksempler + testsæt          - status: godkendt / til_godkendelse / afvist
                                        - log af hver indlæsning
 ```
-- Normaliseret vagt: kilde, taxi_nr, slutrapport_nr, dato (vagt start), vagt_slut_dato, vagt_start,
+- Normaliseret vagt: kilde, taxi_nr, slutrapport_nr, dato (vagt start), vagt_slut_dato, vagt_start, total_dkk, antal_ture_kumulativt, taxameter_dkk, fastpris_dkk (tællere til omsætningskontrollen),
   vagt_slut, indkort, overfort, bro_faerge, afregn + `raa_data` (kildens originale felter). Dertil:
   `chauffor_id` (CHAUFFØR-nr på bonen) og de valgfrie `pause_tid` og `arbejdstid` (gemmes som minutter; tomme, når bonen ikke har dem).
   Bontype (`endelig` / `foreloebig` / `ukendt`) hører til indlæsningen, ikke til vagten: kun endelige boner kan blive til en vagt.
@@ -53,6 +53,8 @@ index.html ──► Edge Function "modtag-slutrapport"
 | dato inden for 60 dage, ikke i fremtiden | til_godkendelse |
 | nr 3–5 cifre, starter ikke med 0 | til_godkendelse |
 | nr passer til bilens nummerrække. Bilen er `taxi_nr` **aflæst fra bonen**; nummeret sammenlignes med **alle chaufførers** vagter i samme bil (±10 dage, højst 50 fra nærmeste nummer, taxameteret tæller kun op) — aldrig kun med den aktuelle chaufførs egne vagter. Ny bil uden historik → altid manuel | til_godkendelse |
+| **omsætning mellem boner:** for to boner i samme bil er ΔTOTAL DKK = taxameter + fastpris for den senere bon (+ vagterne imellem). Kroner til overs → "vagt mangler" med beløb; hul i nummer med 0 kr imellem er en tom vagt (ikke fejl); TOTAL der falder, eller numre i rækkefølge hvor tallene ikke passer → afvigelse. Kræver tællerne fra bonen | til_godkendelse (afvigelse); tom vagt er ok |
+| **anden bil end standard** (chaufførens standardbil ≠ bilen fra bonen/nummerrækken) er en markering, ikke en fejl | markering (ingen afvigelse) |
 | **nummer = VDT(Tk)-tallet** på bonen (fx 2285, 2303) er en kendt OCR-fejl: bonens VDT(Tk) læst af OCR og lig slutrapport-nr (`vdt_tk`), eller et nummer i VDT-intervallet uden nabo inden for 50 | til_godkendelse |
 | dublet: kilde + taxi_nr + nr — **uden chauffør**, så samme bon ikke kan ligge hos to chauffører (samme nøgle som den unikke nøgle i databasen) | afvist |
 | et nummer i 11xx, 16xx eller 18xx skal passe til bilens `taxi_nr` (11xx = 001-7144, 16xx = 001-8646, 18xx = 001-8208). Fx nr 1850 på en bon med taxi_nr 001-7144 fejler | til_godkendelse |
@@ -105,7 +107,7 @@ Regler:
 ## Trin
 0. **Tests og testmiljø** — `tests/` + GitHub Actions; separat gratis Supabase-projekt til test.
 1. **Database (kun tilføjelser)** — kolonner på `slutrapporter` (kilde, taxi_nr, status, kontroller,
-   raa_data, billede_sti, indlaesning_id, virksomhed_id, chauffor_id, pause_min, arbejdstid_min); tabeller `kilder` (inkl. `overskrifter` og
+   raa_data, billede_sti, indlaesning_id, virksomhed_id, chauffor_id, pause_min, arbejdstid_min, total_dkk, ture_kum, taxameter, fastpris); tabeller `kilder` (inkl. `overskrifter` og
    `datoformater`), `chauffoer_kilder` (chauffor, kilde, chauffor_id), `taxier`, `indlaesninger` (inkl. bontype og brugt datoformat),
    `virksomheder`; **unik nøgle (kilde, taxi_nr, slutrapport_nr) uden chauffør**, hvor taxi_nr er udfyldt, så samme bon ikke kan
    ligge hos to chauffører (som nr 1112 hos både Adan og Fuad i september). Indsættelse og `opret_slutrapport` tjekker dublet på samme
@@ -140,7 +142,7 @@ Regler:
 8. Salgsversion: privat bucket, tidsbegrænsede links, `OWNER_TOKEN_DEFAULT` fjernes (fjernet fra dashboardet 30/9, punkt 0.3; koden skiftes i punkt 0.2).
 
 ## Beslutninger (ejeren, 2026-09-30)
-9. **Ingen fast bil pr. chauffør.** Alle chauffører kan køre alle tre vogne. Der findes ingen tabel, kolonne eller kontrol, der forudsætter "chauffør → bil".
+9. ~~**Ingen fast bil pr. chauffør.**~~ **Afløst af beslutning 22 (3/10):** bilerne er faste som udgangspunkt, men en anden bil kan forekomme. (Oprindelig tekst: alle chauffører kan køre alle tre vogne.) Der findes ingen tabel, kolonne eller kontrol, der forudsætter "chauffør → bil".
 10. taxi_nr på gamle rækker udfyldes ud fra nummerområdet, ikke ud fra chaufføren.
 11. Nummer-kontrollen går på taxi_nr aflæst fra bonen og sammenligner med alle chaufførers vagter i samme bil.
 12. FØRER-navnet på bonen identificerer chaufføren; det kontrolleres kun, når det står der.
@@ -158,8 +160,16 @@ Regler:
 
 Kun Dantaxi bygges. De øvrige kilder (Taxi 4x27, DRIVR m.fl.) er kun med i designet.
 
+## Beslutninger (ejeren, 2026-10-03)
+22. **Bilerne er faste som udgangspunkt, ikke som regel.** Adan = 001-7144, Fuad og Faysal = 001-8646, Qaalid = 001-8208. En anden bil kan forekomme (fx Adan på 8646 den 3/9). Bilen gemmes pr. chauffør som standard; afvigelse = markering, ikke fejl.
+23. **Omsætning mellem boner.** Hver bon aflæses for TOTAL DKK og ANTAL TURE (kumulativt) samt vagtens taxameter og fastpris. For to boner på samme bil skal forskellen i TOTAL = sum af (taxameter + fastpris) for vagterne imellem. Afvigelse → "vagt mangler" med beløb.
+    Hul i nummer med 0 kr imellem er en tom vagt, ikke en fejl. Er der kroner til overs, mangler en vagt (mindst så mange kr).
+24. **Engangsjob bagud** over alle billeder i Storage (`scripts/omsaetning-bagud`): kun læsning, rapport over hvilke vagter og hvor mange kroner der mangler. Køres af ejeren med egne nøgler; først en prøve på ca. 20 boner.
+
 ## Biler
-Alle chauffører kan køre alle tre vogne; bilen findes ud fra nummerområdet (og fra `taxi_nr` på bonen), ikke ud fra chaufføren.
+Bilerne er faste **som udgangspunkt pr. chauffør** (standard, ikke regel): Adan 001-7144, Fuad og Faysal 001-8646, Qaalid 001-8208. En anden bil kan forekomme (fx Adan på 001-8646 den 3/9);
+de er en **markering**, ikke en fejl. Standardbilen gemmes pr. chauffør (`chauffoer_biler_log`, sidste række gælder) og bruges kun til markeringen. En vagts bil findes ud fra
+`taxi_nr` på bonen, ellers ud fra nummerrækken (naboer ±50). Standardbilen bruges ikke til at gætte `taxi_nr` på gamle rækker.
 
 | Taxi nr. | Slutrapport-nr. (nummerområde) |
 |---|---|

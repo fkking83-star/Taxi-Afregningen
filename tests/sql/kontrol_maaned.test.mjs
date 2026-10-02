@@ -13,7 +13,9 @@ check(!/\b(insert|update|delete|drop|alter|create|truncate|grant|revoke)\b/i.tes
 const C = K.STANDARD;
 const P = /500 as stor_diff_kr, 0\.2 as stor_diff_pct, 100 as stor_diff_min_kr, 180 as vagt_min_min, 960 as vagt_max_min, 5 as overlap_tol_min,\s+50 as nr_afstand, 2200 as vdt_fra, 2399 as vdt_til/.exec(SQL);
 check(!!P && C.STOR_DIFF_KR === 500 && C.STOR_DIFF_PCT === 0.2 && C.STOR_DIFF_MIN_KR === 100 && C.VAGT_MIN_MIN === 180 && C.VAGT_MAX_MIN === 960 && C.OVERLAP_TOLERANCE_MIN === 5 && C.NR_AFSTAND === 50 && C.VDT_FRA === 2200 && C.VDT_TIL === 2399, 'SQL og kontroller.js har de samme parametre (500 kr, 20 %, 100 kr, 3–16 t, 5 min, naboer ±50, VDT 2200–2399)');
-check(!/001-\d{4}/.test(SQL.replace(/--.*$/gm, '')), 'SQL-kontrollen bruger ingen faste biler eller 100-blokke (kun naboer)');
+const stdSql = Object.fromEntries([...SQL.matchAll(/\('([a-z]+)', '(001-\d{4})'\)/g)].map(m => [m[1], m[2]]));
+check(JSON.stringify(stdSql) === JSON.stringify(C.STANDARD_BIL), 'SQL og kontroller.js har de samme standardbiler pr. chauffør');
+check(!/\b\d{4}\b *(and|between)/i.test(SQL.replace(/--.*$/gm, '').replace(/001-\d{4}/g, '')), 'SQL-kontrollen bruger ingen faste 100-blokke til nummerrækker (kun naboer og standardbiler)');
 
 const { db, fejl } = await bygFraMigrationer();
 check(!fejl, 'Kæden bygger' + (fejl ? ': ' + fejl.besked : ''));
@@ -90,7 +92,7 @@ for (const maaned of ['2026-09', '2026-10', '2026-11', '2026-08']) {
   check(JSON.stringify(sqlFund) === JSON.stringify(jsFund), `${maaned}: SQL og kontroller.js giver de samme ${jsFund.length} fund` + (JSON.stringify(sqlFund) !== JSON.stringify(jsFund) ? `\n   kun SQL: ${kun(sqlFund, jsFund).slice(0, 4).join(' | ')}\n   kun JS: ${kun(jsFund, sqlFund).slice(0, 4).join(' | ')}` : ''));
   if (maaned === '2026-09') {
     const typer = new Set(jsFund.map(x => x.split(' :: ')[0]));
-    check(typer.size === 8, `2026-09: alle 8 kontrol-typer er repræsenteret i testdata (${[...typer].join(', ')})`);
+    check(typer.size === 9, `2026-09: alle 9 kontrol-typer er repræsenteret i testdata (${[...typer].join(', ')})`);
   }
 }
 check(samlet > 40, `I alt ${samlet} fund sammenlignet`);

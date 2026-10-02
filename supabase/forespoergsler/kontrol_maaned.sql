@@ -7,7 +7,11 @@
 --   4 samme_dato_beloeb      samme dato og samme indkørt (> 0)
 --   5 stor_difference        indkørt − overført ≥ 500 kr, eller ≥ 100 kr og ≥ 20 % af indkørt
 --   6 vagtlaengde            vagt kortere end 3 t eller længere end 16 t (slut før start = næste døgn)
+--   8 afvigende_bil         en chauffør kørte en anden bil end sin standardbil (en MARKERING, ikke en fejl)
 --   7 hul_i_raekken          numre mangler mellem to vagter i samme række (rapporteres i måneden efter hullet)
+-- STANDARDBIL pr. chauffør er et udgangspunkt, ikke en regel (Adan 001-7144, Fuad og Faysal 001-8646, Qaalid 001-8208); en anden bil kan forekomme.
+-- En nummer-rækkes bil er den standardbil, flest af de chauffører har, der kører i rækken (mindst 2 stemmer, ingen uafgjort); ellers ukendt.
+-- Omsætningskontrollen (TOTAL DKK mellem boner) har ingen SQL her: tællerne findes ikke i databasen endnu (de læses fra billederne, se scripts/omsaetning-bagud).
 -- BILEN/RÆKKEN findes ud fra NABOER: to numre er i samme række, når de højst er 50 fra hinanden (kæde af naboer). Der bruges ingen faste 100-blokke.
 -- Nabomånederne bruges kun som sammenligning (vagter og numre ved månedsskiftet). Fund hører til den valgte måned.
 with valg as (select '2026-09'::text as maaned),     -- ← RET KUN DENNE LINJE
@@ -29,6 +33,7 @@ r as (
   from v_data v
   where v.regnskabsmaaned in (select foer from mdr union all select maaned from mdr union all select efter from mdr)
 ),
+std(ch, bil) as (values ('adan', '001-7144'), ('fuad', '001-8646'), ('faysal', '001-8646'), ('qaalid', '001-8208')),
 tal as (select distinct nr_tal from r where nr_tal is not null),
 s0 as (select nr_tal, lag(nr_tal) over (order by nr_tal) as forrige from tal),
 s as (
@@ -37,7 +42,7 @@ s as (
 ),
 sz as (select nr_tal, serie, count(*) over (partition by serie) as antal_i_serie from s),
 t as (
-  select r.*, case when sz.serie is not null then 'række ' || sz.serie end as bil, sz.antal_i_serie,
+  select r.*, sz.serie, case when sz.serie is not null then 'række ' || sz.serie end as bil, sz.antal_i_serie,
          coalesce('række ' || sz.serie, 'ukendt') || '|' || r.nr as gruppe
   from r left join sz on sz.nr_tal = r.nr_tal
 ),
@@ -81,6 +86,18 @@ f6 as (
   from t, p
   where valgt and s_min is not null and (e_min - s_min < p.vagt_min_min or e_min - s_min > p.vagt_max_min)
 ),
+sc as (select t.serie, std.bil, count(*) as c from t join std on std.ch = t.ch where t.serie is not null group by t.serie, std.bil),
+sk as (
+  select serie, (array_agg(bil order by c desc, bil))[1] as bil, max(c) as c1,
+         coalesce((array_agg(c order by c desc, bil))[2], 0) as c2, sum(c) as n
+  from sc group by serie
+),
+sbil as (select serie, bil from sk where n >= 2 and c1 > c2),
+f8 as (
+  select 'afvigende_bil', 'afvigende_bil|' || t.id, t.chauffor || ' kørte ' || sbil.bil || ' (nr ' || t.nr || ', ' || t.dato || '), standard er ' || std.bil
+  from t join std on std.ch = t.ch join sbil on sbil.serie = t.serie
+  where t.valgt and std.bil <> sbil.bil
+),
 n as (
   select distinct on (bil, nr_tal) bil, nr_tal, id, valgt
   from t where bil is not null and nr_tal is not null
@@ -93,6 +110,6 @@ f7 as (
 )
 select * from (
   select * from f1 union all select * from f2 union all select * from f2b union all select * from f3 union all select * from f4
-  union all select * from f5 union all select * from f6 union all select * from f7
+  union all select * from f5 union all select * from f6 union all select * from f7 union all select * from f8
 ) alle(type, identitet, hvad)
 order by type, identitet;

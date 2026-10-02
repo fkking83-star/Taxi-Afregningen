@@ -1,0 +1,3 @@
+# Aflæste boner og rapporter indeholder chaufførnavne og beløb: de skal ikke i git
+cache/
+rapport/
