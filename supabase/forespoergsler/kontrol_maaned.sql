@@ -6,7 +6,7 @@
 --   3 overlap                to vagter overlapper, hos samme chauffør eller i samme bil (samme nr i samme bil er en dublet, punkt 1)
 --   4 samme_dato_beloeb      samme dato og samme indkørt (> 0)
 --   5 stor_difference        indkørt − overført ≥ 500 kr, eller ≥ 100 kr og ≥ 20 % af indkørt
---   6 vagtlaengde            vagt kortere end 3 t eller længere end 16 t (slut før start = næste døgn)
+--   6 vagtlaengde            vagt kortere end 3 t eller længere end 20 t (slut før start = næste døgn)
 --   8 afvigende_bil         en chauffør kørte en anden bil end sin standardbil (en MARKERING, ikke en fejl)
 --   7 hul_i_raekken          numre mangler mellem to vagter i samme række (rapporteres i måneden efter hullet)
 -- STANDARDBIL pr. chauffør er et udgangspunkt, ikke en regel (Adan 001-7144, Fuad og Faysal 001-8646, Qaalid 001-8208); en anden bil kan forekomme.
@@ -15,7 +15,7 @@
 -- BILEN/RÆKKEN findes ud fra NABOER: to numre er i samme række, når de højst er 50 fra hinanden (kæde af naboer). Der bruges ingen faste 100-blokke.
 -- Nabomånederne bruges kun som sammenligning (vagter og numre ved månedsskiftet). Fund hører til den valgte måned.
 with valg as (select '2026-09'::text as maaned),     -- ← RET KUN DENNE LINJE
-p as (select 500 as stor_diff_kr, 0.2 as stor_diff_pct, 100 as stor_diff_min_kr, 180 as vagt_min_min, 960 as vagt_max_min, 5 as overlap_tol_min,
+p as (select 500 as stor_diff_kr, 0.2 as stor_diff_pct, 100 as stor_diff_min_kr, 180 as vagt_min_min, 1200 as vagt_max_min, 5 as overlap_tol_min,
              50 as nr_afstand, 2200 as vdt_fra, 2399 as vdt_til),
 mdr as (
   select to_char(x.d - interval '1 month', 'YYYY-MM') as foer, v.maaned, to_char(x.d + interval '1 month', 'YYYY-MM') as efter

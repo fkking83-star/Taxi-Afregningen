@@ -75,6 +75,15 @@ const ov = af(res, 'overlap');
 check(ov.length === 3 && ov.some(f => f.raekker.includes(o1.id) && f.raekker.includes(o2.id) && /samme chauffør/.test(f.tekst) && /60 min/.test(f.tekst)), 'Samme chauffør i to biler på samme tid: overlap på 60 min');
 check(ov.some(f => f.raekker.includes(o1.id) && f.raekker.includes(o3.id) && /samme bil \(række 1805–1807\)/.test(f.tekst)) && ov.some(f => f.raekker.includes(o3.id) && f.raekker.includes(o4.id) && /samme bil/.test(f.tekst)), 'To chauffører i samme bil på samme tid: overlap');
 check(!ov.some(f => f.raekker.includes(o1.id) && f.raekker.includes(o4.id)), 'Overlap på 0 min og ≤ 5 min ignoreres (vagtskifte); o1 slutter 14:00, o4 starter 14:03');
+// Fuad kører bil 11xx og bil 16xx samme dag (to forskellige nummerrækker, ingen fælles bil): fanges som samme chauffør
+const fu1 = r({ dato: '2026-09-12', slutrapport_nr: '1113', chauffor: 'Fuad', vagt_start: '06:00', vagt_slut: '16:00' });
+const fu2 = r({ dato: '2026-09-12', slutrapport_nr: '1648', chauffor: 'Fuad', vagt_start: '14:00', vagt_slut: '22:00' });
+const fuo = af(K.kontrolMaaned([fu1, fu2], '2026-09'), 'overlap');
+check(fuo.length === 1 && fuo[0].raekker.includes(fu1.id) && fuo[0].raekker.includes(fu2.id) && /120 min \(samme chauffør\)/.test(fuo[0].tekst), 'Fuad 1113 + 1648 den 12/9 (to rækker, samme chauffør): overlap 120 min');
+const fuo2 = af(K.kontrolMaaned([Object.assign({}, fu1, { taxi_nr: '001-7144' }), Object.assign({}, fu2, { taxi_nr: '001-8646' })], '2026-09'), 'overlap');
+check(fuo2.length === 1 && /samme chauffør\)/.test(fuo2[0].tekst), 'Samme chauffør fanges også, når bonernes taxi_nr er forskellige');
+const fuo3 = af(K.kontrolMaaned([Object.assign({}, fu1, { chauffor: 'Adan', taxi_nr: '001-7144' }), Object.assign({}, fu2, { slutrapport_nr: '1114', taxi_nr: '001-7144' })], '2026-09'), 'overlap');
+check(fuo3.length === 1 && /samme bil/.test(fuo3[0].tekst), 'To chauffører i samme bil (taxi_nr fra bonen) på samme tid: overlap');
 const natA = r({ dato: '2026-09-06', slutrapport_nr: '1810', chauffor: 'Fuad', vagt_start: '22:00', vagt_slut: '06:00' });
 const natB = r({ dato: '2026-09-07', slutrapport_nr: '1811', chauffor: 'Adan', vagt_start: '05:00', vagt_slut: '12:00' });      // overlapper nattens slut (7/9 kl. 5–6) i samme bil
 check(af(K.kontrolMaaned([natA, natB], '2026-09'), 'overlap').length === 1 && af(K.kontrolMaaned([natA, natB], '2026-09'), 'overlap')[0].tekst.includes('60 min'), 'Nattevagt over midnat overlapper næste dags tidlige vagt (60 min)');
@@ -98,7 +107,7 @@ check(dd(3000, 3600).diff === -600 && /Overført er større/.test(af(rent([r({ d
 // 6) Vagtlængde
 const L = (s, e) => r({ dato: '2026-09-09', slutrapport_nr: '1812', chauffor: 'Adan', vagt_start: s, vagt_slut: e });
 const lf = (s, e) => af(rent([L(s, e)]), 'vagtlaengde').length;
-check(lf('06:00', '08:59') === 1 && lf('06:00', '09:00') === 0 && lf('06:00', '22:00') === 0 && lf('06:00', '22:01') === 1 && lf('22:00', '06:00') === 0, 'Vagtlængde: under 3 t og over 16 t (grænserne 3:00 og 16:00 er ok); 22:00–06:00 er 8 t');
+check(lf('06:00', '08:59') === 1 && lf('06:00', '09:00') === 0 && lf('06:00', '22:01') === 0 && lf('06:00', '02:00') === 0 && lf('06:00', '02:01') === 1 && lf('22:00', '06:00') === 0, 'Vagtlængde: under 3 t og over 20 t (grænserne 3:00 og 20:00 er ok; 16 t er ikke længere mistænkeligt); 22:00–06:00 er 8 t');
 check(lf('06:00', '06:00') === 1 && lf('02:13', '13:31') === 0 && lf('16:02', '06:41') === 0 && lf('6:00', '14:00') === 0, 'Vagt på 0 min fanges; 02:13–13:31 og 16:02–06:41 (rigtige vagter) er ok; "6:00" uden nul forstås');
 check(K.vagtLaengdeMin({ dato: '2026-09-09', vagt_start: '22:00', vagt_slut: '06:00' }) === 480 && K.vagtLaengdeMin({ dato: '2026-09-09', vagt_start: '', vagt_slut: '06:00' }) === null, 'vagtLaengdeMin: nat = 480 min; manglende tid = null');
 

@@ -57,13 +57,13 @@ index.html ──► Edge Function "modtag-slutrapport"
 | **anden bil end standard** (chaufførens standardbil ≠ bilen fra bonen/nummerrækken) er en markering, ikke en fejl | markering (ingen afvigelse) |
 | **nummer = VDT(Tk)-tallet** på bonen (fx 2285, 2303) er en kendt OCR-fejl: bonens VDT(Tk) læst af OCR og lig slutrapport-nr (`vdt_tk`), eller et nummer i VDT-intervallet uden nabo inden for 50 | til_godkendelse |
 | dublet: kilde + taxi_nr + nr — **uden chauffør**, så samme bon ikke kan ligge hos to chauffører (samme nøgle som den unikke nøgle i databasen) | afvist |
-| et nummer i 11xx, 16xx eller 18xx skal passe til bilens `taxi_nr` (11xx = 001-7144, 16xx = 001-8646, 18xx = 001-8208). Fx nr 1850 på en bon med taxi_nr 001-7144 fejler | til_godkendelse |
+| et nummer skal have en nabo (±50) i samme bil; bilen er `taxi_nr` fra bonen. Fx nr 1850 på en bon med taxi_nr 001-7144 fejler, hvis vagterne omkring 1850 er kørt i 001-8208. Ingen faste blokke | til_godkendelse |
 | samme billede uploadet igen (fingeraftryk af filen) | afvist |
 | vagt slut før upload, og upload senest 48 t efter vagt slut | til_godkendelse |
 | FØRER-navnet på bonen identificerer chaufføren og **sammenlignes med chaufførens link** (den chauffør, der uploadede). Afvigelse giver `til_godkendelse`. Kontrolleres **kun når navnet står på bonen**: mangler linjen (KOPI-bon), er det ikke en fejl | til_godkendelse |
 | **CHAUFFØR-nr** (`chauffor_id`) på bonen sammenlignes med den chauffør, der uploadede (nummeret i `chauffoer_kilder` for bonens kilde). Afvigelse giver `til_godkendelse`. Kontrolleres **kun når nummeret står på bonen**. Hvis FØRER-navn og CHAUFFØR-nr begge står der og peger på hver sin chauffør, vises begge afvigelser | til_godkendelse |
 | rimelige beløb | til_godkendelse |
-| **vagtlængde** regnes på `arbejdstid`, når den står på bonen, ellers på brutto (vagt_start → vagt_slut, med slutdato). Grænsen er 24 t i begge tilfælde (gammel grænse på 16 t er fjernet; en 24-timers vagt er ikke urimelig). Arbejdstid større end brutto fejler. Mangler pause/arbejdstid, er det ikke en fejl | til_godkendelse |
+| **vagtlængde** regnes på `arbejdstid`, når den står på bonen, ellers på brutto (vagt_start → vagt_slut, med slutdato). Øvre grænse er 20 t i begge tilfælde (ejerens beslutning 2/10; før 16 t), nedre 3 t. Arbejdstid større end brutto fejler. Mangler pause/arbejdstid, er det ikke en fejl | til_godkendelse |
 | *(forslag)* hvis både pause_tid, arbejdstid og brutto står på bonen: arbejdstid + pause = brutto (±5 min) | til_godkendelse |
 
 "Forkert auto-godkendelse" = mindst ét af chauffør, taxi_nr, nr, dato, indkørt, overført, bro eller afregn
@@ -81,7 +81,7 @@ naboer); et nummer uden nogen anden vagt (hos nogen chauffør) inden for 50 er "
 **Huller i nummerrækken er spørgsmål, ikke fejl** (3/10-2026): bilerne kan køres af chauffører uden for lønsystemet. Dashboardet viser hullet i eget afsnit "Mangler der en bon?" med nabovagterne
 (nr, chauffør og dato før og efter), og hvert manglende nummer kan markeres "kendt hul – OK" (nøgle `hul_nr|<nr>`, gemmes som øvrige OK-markeringer). Et hul må aldrig sende en ny bon til `til_godkendelse`
 (`tjekNy` markerer det `spoergsmaal: true`).
-De faste blokke (11xx/16xx/18xx) bruges kun til at udfylde taxi_nr på gamle rækker og til beslutning 15.
+De faste blokke (11xx/16xx/18xx) bruges kun til at udfylde taxi_nr på gamle rækker (engangs, i 1.1) – ikke til beslutning 15 og ikke til nogen kontrol.
 Der er endnu ikke bygget: kilde, bontype, CHAUFFØR-nr, FØRER-navn, datoparser, dublet på billede og uploadtidspunkt (kræver selve indlæsningen).
 
 ## Datoparser (design; bygges i trin 3 som ren funktion med enhedstests)
@@ -148,12 +148,12 @@ Regler:
 12. FØRER-navnet på bonen identificerer chaufføren; det kontrolleres kun, når det står der.
 13. Den unikke nøgle er (kilde, taxi_nr, slutrapport_nr) **uden chauffør**: samme bon kan ikke ligge hos to chauffører.
 14. FØRER-navnet på bonen sammenlignes med chaufførens link (uploaderen). Afvigelse giver `til_godkendelse`.
-15. Et nummer i 11xx, 16xx eller 18xx skal passe til bilens `taxi_nr` (11xx = 001-7144, 16xx = 001-8646, 18xx = 001-8208); ellers `til_godkendelse`.
+15. Et nummer skal passe til bilens nummerrække: der skal findes en vagt i samme bil højst 50 numre fra (naboer ±50); bilen er `taxi_nr` fra bonen, ellers den række nummeret hører til. Findes ingen sådan nabo, eller ligger naboerne i en anden bil end bonens `taxi_nr`, er nummeret uden for rækken → `til_godkendelse`. Faste nummerblokke (11xx/16xx/18xx) bruges ikke til kontrollen.
 16. Den unikke nøgle oprettes først, når der ikke er samme bon hos to chauffører. En læse-forespørgsel (`supabase/forespoergsler/taxi_nr_4_samme_bon_hos_flere_chauffoerer.sql`) viser alle par (samme bil, samme nr, forskellige chauffører), og migrationen starter med en vagt (`taxi_nr_5_vagt_foer_unik_noegle.sql`), der stopper med en tydelig fejl, hvis der stadig er nogen. Intet ændres da.
 
 ## Beslutninger (ejeren, 2026-10-02) — design nu, byg ikke 4x27/DRIVR
 17. **CHAUFFØR-nr:** bonens felt `chauffor_id` sammenlignes med den chauffør, der uploadede. Afvigelse giver `til_godkendelse`. Kontrolleres kun, når feltet står på bonen.
-18. **Pause og arbejdstid:** `pause_tid` og `arbejdstid` er valgfrie felter. "Rimelig vagtlængde" regnes på arbejdstid, eller brutto ≤ 24 t; grænsen på 16 t udgår.
+18. **Pause og arbejdstid:** `pause_tid` og `arbejdstid` er valgfrie felter. "Rimelig vagtlængde" regnes på arbejdstid, eller brutto ≤ 20 t (øvre grænse 20 t, beslutning 2/10).
 19. **Kilde:** kilden aflæses af bonens overskrift (DANTAXI, Taxi 4x27 …) og sammenlignes med chaufførens kilde. Afvigelse giver `til_godkendelse`.
 20. **Bontype:** `foreloebig` / `endelig`. Foreløbige boner afvises med tydelig besked.
 21. **Datoparser:** skal kunne håndtere flere formater (fx åååå-dd-mm), med faste regler for tvetydige datoer (se Datoparser ovenfor).

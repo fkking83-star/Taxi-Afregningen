@@ -11,8 +11,8 @@ check(!/\b(insert|update|delete|drop|alter|create|truncate|grant|revoke)\b/i.tes
 
 // Parametrene i SQL'en er de samme som STANDARD i kontroller.js
 const C = K.STANDARD;
-const P = /500 as stor_diff_kr, 0\.2 as stor_diff_pct, 100 as stor_diff_min_kr, 180 as vagt_min_min, 960 as vagt_max_min, 5 as overlap_tol_min,\s+50 as nr_afstand, 2200 as vdt_fra, 2399 as vdt_til/.exec(SQL);
-check(!!P && C.STOR_DIFF_KR === 500 && C.STOR_DIFF_PCT === 0.2 && C.STOR_DIFF_MIN_KR === 100 && C.VAGT_MIN_MIN === 180 && C.VAGT_MAX_MIN === 960 && C.OVERLAP_TOLERANCE_MIN === 5 && C.NR_AFSTAND === 50 && C.VDT_FRA === 2200 && C.VDT_TIL === 2399, 'SQL og kontroller.js har de samme parametre (500 kr, 20 %, 100 kr, 3–16 t, 5 min, naboer ±50, VDT 2200–2399)');
+const P = /500 as stor_diff_kr, 0\.2 as stor_diff_pct, 100 as stor_diff_min_kr, 180 as vagt_min_min, 1200 as vagt_max_min, 5 as overlap_tol_min,\s+50 as nr_afstand, 2200 as vdt_fra, 2399 as vdt_til/.exec(SQL);
+check(!!P && C.STOR_DIFF_KR === 500 && C.STOR_DIFF_PCT === 0.2 && C.STOR_DIFF_MIN_KR === 100 && C.VAGT_MIN_MIN === 180 && C.VAGT_MAX_MIN === 1200 && C.OVERLAP_TOLERANCE_MIN === 5 && C.NR_AFSTAND === 50 && C.VDT_FRA === 2200 && C.VDT_TIL === 2399, 'SQL og kontroller.js har de samme parametre (500 kr, 20 %, 100 kr, 3–16 t, 5 min, naboer ±50, VDT 2200–2399)');
 const stdSql = Object.fromEntries([...SQL.matchAll(/\('([a-z]+)', '(001-\d{4})'\)/g)].map(m => [m[1], m[2]]));
 check(JSON.stringify(stdSql) === JSON.stringify(C.STANDARD_BIL), 'SQL og kontroller.js har de samme standardbiler pr. chauffør');
 check(!/\b\d{4}\b *(and|between)/i.test(SQL.replace(/--.*$/gm, '').replace(/001-\d{4}/g, '')), 'SQL-kontrollen bruger ingen faste 100-blokke til nummerrækker (kun naboer og standardbiler)');
@@ -39,7 +39,7 @@ for (let dag = 0; dag < 90; dag++) {   // 28/8 → 26/11
   const d = new Date(Date.UTC(2026, 7, 28 + dag)).toISOString().slice(0, 10);
   for (const bil of ['a', 'b', 'c']) {
     if (rnd() < 0.2) { tællere[bil] += 1 + Math.floor(rnd() * 3); continue; }   // en dag uden vagt, eller huller i rækken
-    const start = pick([360, 390, 840, 870, 1320, 600]), len = pick([480, 540, 600, 480, 120, 1000, 30, 840]);
+    const start = pick([360, 390, 840, 870, 1320, 600]), len = pick([480, 540, 600, 480, 120, 1000, 30, 840, 1190, 1210]);
     const ind = Math.round(1500 + rnd() * 4000), diff = pick([0, 0, 10, 25, 150, 300, 480, 500, 520, 700, ind * 0.2, -40, -600]);
     add({ dato: d, nr: String(tællere[bil]++), chauffor: pick(navne), indkort: ind, overfort: Math.round(ind - diff), vagt_start: tid(start), vagt_slut: tid(start + len) });
   }
@@ -50,8 +50,12 @@ const hand = [
   { dato: '2026-09-11', nr: ' 1150 ', chauffor: 'Fuad', indkort: 4904, overfort: 4929, vagt_start: '02:13', vagt_slut: '13:31' },    // samme bon, to chauffører
   { dato: '2026-09-13', nr: '2303', chauffor: 'Qaalid', indkort: 3555, overfort: 3375, vagt_start: '09:00', vagt_slut: '12:00' },       // uden for områderne; præcis 3 t
   { dato: '2026-09-14', nr: '1087', chauffor: 'Qaalid', indkort: 1000, overfort: 800, vagt_start: '06:00', vagt_slut: '08:59' },        // 20 % præcis; 2:59
-  { dato: '2026-09-15', nr: '', chauffor: 'Adan', indkort: 1000, overfort: 801, vagt_start: '6:00', vagt_slut: '22:00' },              // tomt nr; 16:00 præcis; 19,9 %
-  { dato: '2026-09-15', nr: '99', chauffor: 'Fuad', indkort: 5000, overfort: 4500, vagt_start: '06:00', vagt_slut: '22:01' },          // 500 præcis; 16:01
+  { dato: '2026-09-15', nr: '', chauffor: 'Adan', indkort: 1000, overfort: 801, vagt_start: '6:00', vagt_slut: '22:00' },              // tomt nr; 16 t; 19,9 %
+  { dato: '2026-09-15', nr: '99', chauffor: 'Fuad', indkort: 5000, overfort: 4500, vagt_start: '06:00', vagt_slut: '22:01' },          // 500 præcis; 16:01 (ok med grænse 20 t)
+  { dato: '2026-09-21', nr: '1640', chauffor: 'Qaalid', indkort: 1500, overfort: 1500, vagt_start: '06:00', vagt_slut: '02:00' },        // 20:00 præcis: ok
+  { dato: '2026-09-23', nr: '1641', chauffor: 'Faysal', indkort: 1501, overfort: 1501, vagt_start: '06:00', vagt_slut: '02:01' },       // 20:01: vagtlængde
+  { dato: '2026-09-12', nr: '1113', chauffor: 'Fuad', indkort: 1502, overfort: 1502, vagt_start: '06:00', vagt_slut: '16:00' },        // Fuad i to rækker samme dag: overlap (samme chauffør)
+  { dato: '2026-09-12', nr: '1648', chauffor: 'Fuad', indkort: 1503, overfort: 1503, vagt_start: '14:00', vagt_slut: '22:00' },
   { dato: '2026-09-16', nr: 'abc', chauffor: 'Faysal', indkort: 5000, overfort: 4501, vagt_start: null, vagt_slut: null },             // 499; ingen tider
   { dato: '2026-09-17', nr: '1705', chauffor: 'Adan', indkort: 1000, overfort: 1000, vagt_start: '06:00', vagt_slut: '06:00' },        // 0 min
   { dato: '2026-09-18', nr: '1610', chauffor: 'Adan', indkort: 2000, overfort: 2000, vagt_start: '06:00', vagt_slut: '14:00' },

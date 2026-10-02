@@ -43,7 +43,7 @@
     STOR_DIFF_PCT: 0.2,       // … eller mindst 20 % af indkørt, når den samtidig er mindst STOR_DIFF_MIN_KR
     STOR_DIFF_MIN_KR: 100,
     VAGT_MIN_MIN: 180,        // vagt kortere end 3 t er mistænkelig
-    VAGT_MAX_MIN: 960,        // vagt længere end 16 t er mistænkelig
+    VAGT_MAX_MIN: 1200,       // vagt længere end 20 t er mistænkelig
     OVERLAP_TOLERANCE_MIN: 5, // overlap på op til 5 min ignoreres (vagtskifte, afrundede tider)
   };
 

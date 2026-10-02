@@ -15,7 +15,7 @@ const nyData = () => [
   v('rD', '2026-09-11', '1150', 'Adan', 4904, 4929, '02:13', '13:31', { billede_url: 'https://example.test/d.jpg' }),
   v('rE', '2026-09-11', '1150', 'Fuad', 4904, 4929, '02:13', '13:31', { billede_url: 'https://example.test/e.jpg' }),   // samme nr hos to chauffører + samme dato og beløb
   v('rF', '2026-09-13', '2303', 'Qaalid', 3555, 3375, '09:00', '17:00'),                                   // VDT(Tk)-tallet læst som nummer
-  v('rG', '2026-09-18', '1610', 'Faysal', 2000, 1400, '06:00', '23:00'),                                   // stor difference (600) + 17 t
+  v('rG', '2026-09-18', '1610', 'Faysal', 2000, 1400, '06:00', '03:00'),                                   // stor difference (600) + 21 t
   v('rH', '2026-09-18', '1612', 'Adan', 2500, 2500, '20:00', '23:59'),                                     // overlap med rG (samme bil) + hul: 1611 mangler
   v('rL', '2026-09-10', '1149', 'Qaalid', 3050, 3050, '06:00', '14:00'),                                   // naboer til 1150 (11xx-bilens række)
   v('rM', '2026-09-12', '1151', 'Faysal', 3060, 3060, '06:00', '14:00'),

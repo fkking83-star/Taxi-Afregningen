@@ -28,7 +28,7 @@ Kobling mellem nummer og bil går **kun** på nummerområdet. Chaufføren bruges
 ## Beslutninger (samme ordlyd som docs/plan-indlaesning.md, beslutning 13–16)
 13. Den unikke nøgle er (kilde, taxi_nr, slutrapport_nr) **uden chauffør**: samme bon kan ikke ligge hos to chauffører.
 14. FØRER-navnet på bonen sammenlignes med chaufførens link (uploaderen). Afvigelse giver `til_godkendelse`.
-15. Et nummer i 11xx, 16xx eller 18xx skal passe til bilens `taxi_nr` (11xx = 001-7144, 16xx = 001-8646, 18xx = 001-8208); ellers `til_godkendelse`.
+15. Et nummer skal passe til bilens nummerrække: der skal findes en vagt i samme bil højst 50 numre fra (naboer ±50); bilen er `taxi_nr` fra bonen, ellers den række nummeret hører til. Findes ingen sådan nabo, eller ligger naboerne i en anden bil end bonens `taxi_nr`, er nummeret uden for rækken → `til_godkendelse`. Faste nummerblokke (11xx/16xx/18xx) bruges ikke til kontrollen.
 16. Den unikke nøgle oprettes først, når der ikke er samme bon hos to chauffører. En læse-forespørgsel (`supabase/forespoergsler/taxi_nr_4_samme_bon_hos_flere_chauffoerer.sql`) viser alle par (samme bil, samme nr, forskellige chauffører), og migrationen starter med en vagt (`taxi_nr_5_vagt_foer_unik_noegle.sql`), der stopper med en tydelig fejl, hvis der stadig er nogen. Intet ændres da.
 
 Lønberegningen (`v_lonseddel`, `v_afregning`, `v_data`, `satser`) berøres ikke.
