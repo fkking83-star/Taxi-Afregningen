@@ -111,6 +111,18 @@
   .kontrol-antal{font-size:14px;font-weight:700;border-radius:999px;padding:3px 12px}
   .kontrol-antal.har-fund{background:#FFF1BF;color:#7A5F00}
   .kontrol-antal.ingen{background:var(--green-bg);color:var(--green)}
+  .kontrol-antal.spoergsmaal{background:#E4EEFB;color:#1F4E8C}
+  .sp-h{margin:18px 0 0;font-size:15px}
+  .fund.sp{border-left:4px solid #5B8DD6}
+  .hul-naboer{margin-top:6px;display:grid;gap:6px}
+  .hul-nabo{display:flex;flex-wrap:wrap;gap:4px 10px;align-items:center;font-size:14px;font-variant-numeric:tabular-nums}
+  .hul-lbl{font-size:12px;font-weight:700;color:#1F4E8C;background:#E4EEFB;border-radius:4px;padding:1px 6px;min-width:44px;text-align:center}
+  .hul-nabo button{padding:6px 10px;border-radius:8px;font-size:13px;cursor:pointer;border:1px solid var(--line);background:#fff}
+  .hul-numre{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+  .hul-nr{display:inline-flex;align-items:center;gap:8px;border:1px solid #BCD0EC;background:#F3F8FF;border-radius:10px;padding:5px 8px;font-size:14px;font-variant-numeric:tabular-nums}
+  .hul-nr.kendt{opacity:.65;border-color:var(--line);background:#F9FAFB}
+  .hul-nr button{padding:6px 10px;border-radius:8px;font-size:13px;cursor:pointer;border:1px solid var(--line);background:#fff}
+  .hul-nr .btn-ok{background:var(--green);color:#fff;border-color:var(--green);font-weight:700}
   .kontrol-chips{display:flex;flex-wrap:wrap;gap:6px;margin:10px 0 2px}
   .kontrol-chip{font-size:12px;border:1px solid var(--line);border-radius:999px;padding:3px 10px;background:#fff;font-variant-numeric:tabular-nums}
   .fund{border:1px solid var(--line);border-radius:12px;padding:10px 12px;margin-top:10px;background:#fff}
@@ -127,6 +139,8 @@
   .kontrol-bund{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-top:12px;font-size:14px}
   .kontrol-bund button{padding:8px 12px;border-radius:8px;font-size:14px;cursor:pointer;border:1px solid var(--line);background:#fff}
   @media (max-width:699px){
+    .hul-nabo button,.hul-nr button{padding:11px 12px;font-size:15px;min-height:44px}
+    .hul-nr{width:100%;justify-content:space-between}
     .fund-knapper button{flex:1 1 100%;padding:12px 12px;font-size:15px;min-height:44px}
     .kontrol-bund button{padding:12px 14px;font-size:15px;min-height:44px}
     .kontrol-bund label{min-height:44px;display:flex;align-items:center;gap:8px}
@@ -208,10 +222,11 @@
   </div>
 
   <div class="card" id="kontrolCard">
-    <div class="kontrol-top"><h2>Kontrol af måneden</h2><span id="kontrolAntal" class="kontrol-antal">…</span></div>
+    <div class="kontrol-top"><h2>Kontrol af måneden</h2><span id="kontrolAntal" class="kontrol-antal">…</span><span id="kontrolSpoergsmaalAntal" class="kontrol-antal spoergsmaal hidden"></span></div>
     <div class="note" id="kontrolInfo">Henter…</div>
     <div class="kontrol-chips" id="kontrolChips"></div>
     <div id="kontrolListe"></div>
+    <div id="kontrolSpoergsmaal"></div>
     <div class="kontrol-fejl" id="kontrolFejl"></div>
     <div class="kontrol-bund">
       <button id="kontrolIgen" type="button">Kør kontrollen igen</button>
@@ -1072,17 +1087,26 @@ async function loadKontrol(m){
 }
 function renderKontrol(){
   const k = KONTROL, res = k.res; if(!res) return;
-  const aabne = res.fund.filter(f=>!k.ok.has(f.noegle)), okF = res.fund.filter(f=>k.ok.has(f.noegle));
+  const erSp = f => !!(Kontroller.TYPER[f.type] && Kontroller.TYPER[f.type].spoergsmaal);
+  const fejl = res.fund.filter(f=>!erSp(f)), huller = res.fund.filter(erSp);
+  const aabne = fejl.filter(f=>!k.ok.has(f.noegle)), okF = fejl.filter(f=>k.ok.has(f.noegle));
+  const hulKendt = n => k.ok.has(Kontroller.hulNoegle(n));
+  const aabneHuller = huller.filter(f=>f.mangler.some(n=>!hulKendt(n)));
+  const kendteNr = huller.reduce((s,f)=>s + f.mangler.filter(hulKendt).length, 0);
+  const antalOk = okF.length + kendteNr;
+  if(!antalOk) k.visOk = false;   // intet kontrolleret at vise: afkrydsningen er skjult og må ikke blive hængende
   $("kontrolAntal").textContent = aabne.length ? `${aabne.length} fund` : "Ingen fund ✓";
   $("kontrolAntal").className = "kontrol-antal " + (aabne.length ? "har-fund" : "ingen");
+  $("kontrolSpoergsmaalAntal").textContent = `${aabneHuller.length} spørgsmål`;
+  $("kontrolSpoergsmaalAntal").classList.toggle("hidden", !aabneHuller.length);
   $("kontrolInfo").textContent = `Regnskabsmåned ${k.maaned} · ${k.antal} vagter kontrolleret (nabomånederne bruges til sammenligning)`
     + (res.uden_tider ? ` · ${res.uden_tider} vagter uden tider kunne ikke tjekkes for overlap og længde` : "")
-    + (k.okVirker ? "" : " · Markering som kontrolleret er ikke slået til i databasen endnu (migrationen er ikke kørt); alle fund vises.");
+    + (k.okVirker ? "" : " · Markering som kontrolleret er ikke slået til i databasen endnu (migrationen er ikke kørt); alle fund og spørgsmål vises.");
   const pr = {}; aabne.forEach(f=>pr[f.type] = (pr[f.type]||0) + 1);
   $("kontrolChips").innerHTML = Object.keys(Kontroller.TYPER).filter(t=>pr[t]).map(t=>`<span class="kontrol-chip" data-type="${t}">${escAttr(Kontroller.TYPER[t].titel)}: ${pr[t]}</span>`).join("");
+  const aabnKnap = id => { const r = k.raekker.get(id);
+    return r ? `<button type="button" data-aabn="${escAttr(id)}">Åbn i Ret: ${escAttr(r.chauffor||"")} nr ${escAttr(String(r.slutrapport_nr||"").trim())}</button>` : ""; };
   const kort = (f, erOk) => {
-    const knapper = f.raekker.map(id=>{ const r = k.raekker.get(id);
-      return r ? `<button type="button" data-aabn="${escAttr(id)}">Åbn i Ret: ${escAttr(r.chauffor||"")} nr ${escAttr(String(r.slutrapport_nr||"").trim())}</button>` : ""; }).join("");
     const ok = !k.okVirker ? "" : erOk
       ? `<button type="button" data-fortryd-ok="${escAttr(f.noegle)}">Fortryd OK</button>`
       : `<button type="button" class="btn-ok" data-ok="${escAttr(f.noegle)}">Kontrolleret – OK</button>`;
@@ -1090,22 +1114,55 @@ function renderKontrol(){
       <div class="fund-top"><b>${escAttr(f.titel)}</b><span class="fund-dato">${escAttr(kortDato(f.dato))}</span></div>
       <div class="fund-tekst">${escAttr(f.tekst)}</div>
       <div class="fund-forslag">Forslag: ${escAttr(f.forslag)}</div>
-      <div class="fund-knapper">${knapper}${ok}</div></div>`;
+      <div class="fund-knapper">${f.raekker.map(aabnKnap).join("")}${ok}</div></div>`;
   };
   let html = aabne.map(f=>kort(f, false)).join("");
   if(!aabne.length) html = `<div class="empty">Ingen fund i ${escAttr(k.maaned)}.</div>`;
   if(k.visOk && okF.length) html += `<h3 style="margin:16px 0 0;font-size:14px;color:var(--muted)">Kontrollerede – OK (${okF.length})</h3>` + okF.map(f=>kort(f, true)).join("");
   $("kontrolListe").innerHTML = html;
-  $("kontrolVisOkLabel").classList.toggle("hidden", !(k.okVirker && okF.length));
+
+  // Spørgsmål: huller i nummerrækken. Bilerne kan køres af chauffører uden for lønsystemet, så et hul er ikke nødvendigvis en fejl.
+  const nabo = (label, o) => `<div class="hul-nabo"><span class="hul-lbl">${label}</span><span>nr ${escAttr(o.nr)} · ${escAttr(o.chauffor)} · ${escAttr(kortDato(o.dato))}${o.vagt_start && o.vagt_slut ? " · " + escAttr(o.vagt_start) + "–" + escAttr(o.vagt_slut) : ""}</span>${aabnKnap(o.id)}</div>`;
+  const dageTekst = d => d === null || d === undefined ? "" : d <= 0 ? "Samme dag" : d === 1 ? "Dagen efter" : `${d} dage mellem de to vagter`;
+  const hulKort = f => {
+    const aab = f.mangler.filter(n=>!hulKendt(n)), kend = f.mangler.filter(hulKendt);
+    if(!aab.length && !(k.visOk && kend.length)) return "";
+    const numre = aab.map(n=>
+        `<span class="hul-nr" data-nr="${n}"><b>nr ${n}</b>${k.okVirker ? `<button type="button" class="btn-ok" data-hul-ok="${n}" data-hul="${escAttr(f.identitet)}">Kendt hul – OK</button>` : ""}</span>`)
+      .concat(k.visOk ? kend.map(n=>`<span class="hul-nr kendt" data-nr="${n}"><b>nr ${n} – kendt hul</b><button type="button" data-hul-fortryd="${n}" data-hul="${escAttr(f.identitet)}">Fortryd</button></span>`) : []);
+    const alle = k.okVirker && aab.length > 1 ? `<div class="fund-knapper"><button type="button" data-hul-alle="${escAttr(f.identitet)}">Alle ${aab.length} er kendte huller</button></div>` : "";
+    return `<div class="fund sp${aab.length ? "" : " ok"}" data-type="${f.type}" data-noegle="${escAttr(f.identitet)}">
+      <div class="fund-top"><b>${escAttr(f.titel)}</b><span class="fund-dato">${escAttr(kortDato(f.foer.dato))}–${escAttr(kortDato(f.efter.dato))}</span></div>
+      <div class="fund-tekst">${escAttr(f.tekst)}</div>
+      <div class="hul-naboer">${nabo("Før", f.foer)}${nabo("Efter", f.efter)}<div class="note" style="margin:0">${escAttr(dageTekst(f.dage))}</div></div>
+      <div class="hul-numre">${numre.join("")}</div>
+      <div class="fund-forslag">Spørgsmål: ${escAttr(f.forslag)}</div>${alle}</div>`;
+  };
+  const spHtml = huller.map(hulKort).join("");
+  $("kontrolSpoergsmaal").innerHTML = spHtml
+    ? `<h3 class="sp-h">Spørgsmål: mangler der en bon? (${aabneHuller.length})</h3><div class="note">Bilerne kan køres af chauffører uden for lønsystemet, så et hul i nummerrækken er ikke nødvendigvis en fejl. Markér hvert nummer, du kender, som kendt hul.</div>` + spHtml
+    : "";
+  $("kontrolVisOkLabel").classList.toggle("hidden", !(k.okVirker && antalOk));
   $("kontrolVisOk").checked = k.visOk;
-  $("kontrolVisOkTekst").textContent = `Vis kontrollerede (${okF.length})`;
+  $("kontrolVisOkTekst").textContent = `Vis kontrollerede (${antalOk})`;
+}
+// Gem (eller fortryd) en markering. Samme to funktioner som "Kontrolleret – OK"; kendt hul gemmes pr. nummer (nøgle hul_nr|<nr>).
+async function kontrolSaet(noegle, type, raekker, ok){
+  $("kontrolFejl").textContent = "";
+  try{ await rpc("saet_kontrol_ok", {p_token:OWNER_TOKEN, p_noegle:noegle, p_type:type, p_raekker:raekker, p_ok:ok}); }
+  catch(e){ $("kontrolFejl").textContent = e.status === 404 ? "Markering findes ikke i databasen endnu (migrationen er ikke kørt)." : "Kunne ikke gemme: " + (e.besked || e.message); return false; }
+  if(ok) KONTROL.ok.set(noegle, {noegle, type, hvem:"ejer (dashboard)", tidspunkt:new Date().toISOString()}); else KONTROL.ok.delete(noegle);
+  return true;
 }
 async function kontrolOk(noegle, ok){
   const f = KONTROL.res && KONTROL.res.fund.find(x=>x.noegle === noegle); if(!f) return;
-  $("kontrolFejl").textContent = "";
-  try{ await rpc("saet_kontrol_ok", {p_token:OWNER_TOKEN, p_noegle:noegle, p_type:f.type, p_raekker:f.raekker, p_ok:ok}); }
-  catch(e){ $("kontrolFejl").textContent = e.status === 404 ? "Markering findes ikke i databasen endnu (migrationen er ikke kørt)." : "Kunne ikke gemme: " + (e.besked || e.message); return; }
-  if(ok) KONTROL.ok.set(noegle, {noegle, type:f.type, hvem:"ejer (dashboard)", tidspunkt:new Date().toISOString()}); else KONTROL.ok.delete(noegle);
+  if(await kontrolSaet(noegle, f.type, f.raekker, ok)) renderKontrol();
+}
+async function kontrolHul(identitet, nr, ok){
+  const f = KONTROL.res && KONTROL.res.fund.find(x=>x.identitet === identitet); if(!f) return;
+  const ider = [f.foer.id, f.efter.id];
+  const liste = nr === "alle" ? f.mangler.filter(n=>!KONTROL.ok.has(Kontroller.hulNoegle(n))) : [Number(nr)];
+  for(const n of liste){ if(!(await kontrolSaet(Kontroller.hulNoegle(n), "hul_nr", ider, ok))) break; }
   renderKontrol();
 }
 $("kontrolCard").addEventListener("click", e => {
@@ -1114,6 +1171,9 @@ $("kontrolCard").addEventListener("click", e => {
   else if(b.dataset.aabn){ const r = KONTROL.raekker.get(b.dataset.aabn); if(r) aabnRaekkeIRet(r); }
   else if(b.dataset.ok) kontrolOk(b.dataset.ok, true);
   else if(b.dataset.fortrydOk) kontrolOk(b.dataset.fortrydOk, false);
+  else if(b.dataset.hulOk) kontrolHul(b.dataset.hul, b.dataset.hulOk, true);
+  else if(b.dataset.hulFortryd) kontrolHul(b.dataset.hul, b.dataset.hulFortryd, false);
+  else if(b.dataset.hulAlle) kontrolHul(b.dataset.hulAlle, "alle", true);
 });
 $("kontrolVisOk").addEventListener("change", e => { KONTROL.visOk = e.target.checked; renderKontrol(); });
 

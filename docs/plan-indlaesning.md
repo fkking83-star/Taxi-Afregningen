@@ -76,6 +76,9 @@ difference og vagtlængde, overlap-tolerance) står ét sted (`Kontroller.STANDA
 naboer); et nummer uden nogen anden vagt (hos nogen chauffør) inden for 50 er "uden for bilernes rækker". Det retter, at 1095–1098 blev fejlmarkeret og hullet
 1099–1100 skjult. Når bonens `taxi_nr` er læst, sammenlignes kun inden for samme bil. Et ensomt nummer i 2200–2399 (intervallet er et skøn ud fra 2285 og 2303 og rettes i
 `Kontroller.STANDARD`) markeres som **VDT(Tk)-tallet** læst som slutrapport-nr (en kendt OCR-fejl), og er bonens VDT(Tk) læst som `vdt_tk` og lig nummeret, markeres det altid.
+**Huller i nummerrækken er spørgsmål, ikke fejl** (3/10-2026): bilerne kan køres af chauffører uden for lønsystemet. Dashboardet viser hullet i eget afsnit "Mangler der en bon?" med nabovagterne
+(nr, chauffør og dato før og efter), og hvert manglende nummer kan markeres "kendt hul – OK" (nøgle `hul_nr|<nr>`, gemmes som øvrige OK-markeringer). Et hul må aldrig sende en ny bon til `til_godkendelse`
+(`tjekNy` markerer det `spoergsmaal: true`).
 De faste blokke (11xx/16xx/18xx) bruges kun til at udfylde taxi_nr på gamle rækker og til beslutning 15.
 Der er endnu ikke bygget: kilde, bontype, CHAUFFØR-nr, FØRER-navn, datoparser, dublet på billede og uploadtidspunkt (kræver selve indlæsningen).
 

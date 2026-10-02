@@ -51,7 +51,7 @@
     samme_dato_beloeb:    { rang: 5, titel: "Samme dato og beløb" },
     stor_difference:      { rang: 6, titel: "Stor difference" },
     vagtlaengde:          { rang: 7, titel: "Mistænkelig vagtlængde" },
-    hul_i_raekken:        { rang: 8, titel: "Hul i nummerrækken" },
+    hul_i_raekken:        { rang: 8, titel: "Mangler der en bon?", spoergsmaal: true },   // et spørgsmål, ikke en fejl
   };
 
   const FORSLAG = {
@@ -62,7 +62,7 @@
     samme_dato_beloeb:    "Samme dato og samme indkørte beløb ligner den samme bon indlæst to gange. Tjek billederne.",
     stor_difference:      "Tjek indkørt og overført på billedet (OCR-fejl er almindelige), og ret med Ret.",
     vagtlaengde:          "Tjek start- og sluttid på billedet, og ret med Ret.",
-    hul_i_raekken:        "Mangler der en bon, tilføjes den (Udfyld og godkend, eller chaufføren uploader den). Er hullet rigtigt, fx en vagt uden for systemet, så markér OK.",
+    hul_i_raekken:        "Er det en bon, der ikke er uploadet? Så tilføjes den (Udfyld og godkend, eller chaufføren uploader den). Eller er bilen kørt af en chauffør uden for lønsystemet? Så markér hvert nummer som kendt hul.",
   };
 
   // ---------- Hjælpere ----------
@@ -135,6 +135,9 @@
     for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 0x01000193) >>> 0; }
     return h.toString(36);
   }
+
+  /** Nøglen til "kendt hul" for ét manglende nummer. Et nummer findes kun i én række, så nummeret alene er entydigt. */
+  const hulNoegle = nr => "hul_nr|" + nr;
 
   function lavFund(type, identitet, raekker, tekst, extra) {
     const dato = raekker.map(r => norm(r.dato)).filter(Boolean).sort()[0] || "";
@@ -257,8 +260,11 @@
         if (b - a > 1 && b - a <= cfg.NR_AFSTAND && m.get(b).valgt) {   // større spring er en anden række, ikke et hul
           const ra = m.get(a).r, rb = m.get(b).r, antal = b - a - 1;
           const mangler = antal === 1 ? `nr ${a + 1}` : antal <= 6 ? `nr ${Array.from({ length: antal }, (_, k) => a + 1 + k).join(", ")}` : `nr ${a + 1}–${b - 1} (${antal} numre)`;
+          const nabo = r => ({ id: r.id, nr: nrTekst(r), chauffor: norm(r.chauffor), dato: norm(r.dato), vagt_start: norm(r.vagt_start), vagt_slut: norm(r.vagt_slut) });
+          const dage = dagNr(rb.dato) !== null && dagNr(ra.dato) !== null ? dagNr(rb.dato) - dagNr(ra.dato) : null;
           fund.push(lavFund("hul_i_raekken", `hul_i_raekken|${a}|${b}`, [ra, rb],
-            `${raekkeTekst(m.get(b))}: ${mangler} mangler mellem nr ${a} (${norm(ra.chauffor)}, ${kortDato(ra.dato)}) og nr ${b} (${norm(rb.chauffor)}, ${kortDato(rb.dato)}).`, { bil, fra: a, til: b }));
+            `${raekkeTekst(m.get(b))}: ${mangler} mangler mellem nr ${a} (${norm(ra.chauffor)}, ${kortDato(ra.dato)}) og nr ${b} (${norm(rb.chauffor)}, ${kortDato(rb.dato)}).`,
+            { bil, fra: a, til: b, spoergsmaal: true, mangler: Array.from({ length: antal }, (_, k) => a + 1 + k), foer: nabo(ra), efter: nabo(rb), dage }));
         }
       }
     }
@@ -269,7 +275,8 @@
 
   /**
    * Genbrug i den nye indlæsning: kør de samme kontroller på en NY vagt mod de vagter, der allerede findes (alle chauffører).
-   * Returnerer kun de fund, hvor den nye vagt indgår. Intet gemmes.
+   * Returnerer kun de fund, hvor den nye vagt indgår. Intet gemmes. Fund med `spoergsmaal: true` (huller i nummerrækken) er spørgsmål til ejeren,
+   * ikke afvigelser: de må ikke sende en bon til godkendelse (bilerne kan være kørt af chauffører uden for lønsystemet).
    */
   function tjekNy(ny, eksisterende, cfg) {
     const NY = "__ny__";
@@ -278,5 +285,5 @@
     return kontrolMaaned(alle, NY, cfg).fund.filter(f => f.raekker.includes(alle[0].id));
   }
 
-  return { STANDARD, TYPER, FORSLAG, kontrolMaaned, tjekNy, nummerSerier, bilFraNr, vagtInterval, overlapMinutter, storDifference, vagtLaengdeMin, fingeraftryk };
+  return { STANDARD, TYPER, FORSLAG, kontrolMaaned, tjekNy, nummerSerier, hulNoegle, bilFraNr, vagtInterval, overlapMinutter, storDifference, vagtLaengdeMin, fingeraftryk };
 });

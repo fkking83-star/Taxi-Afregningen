@@ -106,6 +106,15 @@ res = rent(m);
 const h = af(res, 'hul_i_raekken');
 check(h.length === 2 && h.some(x => x.fra === 1804 && x.til === 1807 && /nr 1805, 1806 mangler/.test(x.tekst)) && h.some(x => x.fra === 1609 && x.til === 1611 && /nr 1610 mangler/.test(x.tekst)), 'Hul: 1805–1806 mangler (2 numre), 1610 mangler (1 nummer); ét fund pr. hul');
 check(h.every(x => x.raekker.length === 2), 'Hvert hul peger på de to nabovagter (til "Åbn i Ret")');
+const h1805 = h.find(x => x.fra === 1804);
+check(h.every(x => x.spoergsmaal === true) && K.TYPER.hul_i_raekken.spoergsmaal === true && K.TYPER.hul_i_raekken.titel === 'Mangler der en bon?' && !Object.entries(K.TYPER).some(([t, v]) => t !== 'hul_i_raekken' && v.spoergsmaal), 'Huller er spørgsmål (spoergsmaal: true), ingen anden kontrol er det');
+check(JSON.stringify(h1805.mangler) === '[1805,1806]' && h1805.foer.nr === '1804' && h1805.efter.nr === '1807' && h1805.foer.chauffor && h1805.foer.dato && h1805.efter.chauffor && h1805.efter.dato && h1805.foer.id !== h1805.efter.id, 'Hullet kender de manglende numre og nabovagterne før og efter (nr, chauffør, dato)');
+check(h1805.dage === 3 && K.hulNoegle(1805) === 'hul_nr|1805' && /uden for lønsystemet/.test(K.FORSLAG.hul_i_raekken), 'Dage mellem nabovagterne, nøgle pr. nummer (hul_nr|1805), og forslaget nævner chauffører uden for lønsystemet');
+const dagH = af(K.kontrolMaaned([r({ slutrapport_nr: '1800', dato: '2026-09-03', chauffor: 'Fuad' }), r({ slutrapport_nr: '1803', dato: '2026-09-06', chauffor: 'Adan' })], '2026-09'), 'hul_i_raekken')[0];
+check(dagH.dage === 3 && dagH.foer.dato === '2026-09-03' && dagH.efter.dato === '2026-09-06' && dagH.foer.chauffor === 'Fuad' && dagH.efter.chauffor === 'Adan', 'Hul over flere dage: 3 dage mellem Fuads 3/9 og Adans 6/9');
+// tjekNy: et hul er et spørgsmål og må ikke blive en afvigelse for en ny bon
+const tnHul = K.tjekNy({ dato: '2026-09-20', slutrapport_nr: '1835', chauffor: 'Adan', indkort: 3000, overfort: 3000, vagt_start: '06:00', vagt_slut: '14:00' }, [r({ dato: '2026-09-19', slutrapport_nr: '1830', chauffor: 'Fuad' })]);
+check(tnHul.length === 1 && tnHul[0].type === 'hul_i_raekken' && tnHul[0].spoergsmaal === true, 'tjekNy: en ny bon med hul foran er markeret som spørgsmål (spoergsmaal: true), så indlæsningen ikke sender den til godkendelse');
 const stort = rent(rent_materiale().filter(x => !(Number(x.slutrapport_nr) >= 1805 && Number(x.slutrapport_nr) <= 1812)));
 check(af(stort, 'hul_i_raekken').length === 1 && /nr 1805–1812 \(8 numre\)/.test(af(stort, 'hul_i_raekken')[0].tekst), 'Stort hul vises som interval (nr 1805–1812, 8 numre)');
 // månedsskifte: hul rapporteres én gang, i måneden efter hullet
