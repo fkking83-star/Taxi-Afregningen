@@ -83,7 +83,7 @@ Ejeren kører SQL i SQL Editor. Claude skriver, tester og viser SQL først.
 **Regler for hvert trin:** (1) Claude viser scriptet i chatten. (2) Du svarer ja. (3) Du kører det i SQL Editor. (4) Du siger "virker / virker ikke". Ingen scripts kører i bunker.
 
 **Spærre, før trin F (sluk den gamle ejer-kode) må køres:**
-1. Nyt dashboard-link er set virke på computer **og** telefon (svar: virker / virker ikke). *Dashboardet er testet med `?k=` (gammel kode) efter PR #6; testen med den NYE kode mangler.*
+1. Nyt dashboard-link er set virke på computer **og** telefon (svar: virker / virker ikke), **og siden viser `dashboard v2026-09-30a` nederst**. *Ejeren har 3/10 meldt dashboardet testet, men på `v2026-09-29c` (den gamle udgave med indbygget kode, før PR #6). Derfor mangler testen af den udgave, der er på `main`: åbn adressen uden `?k=` (skal vise "Linket mangler ejer-koden" og v2026-09-30a), og åbn derefter med `?k=`. Viser den stadig 29c, er PR #6 ikke udrullet på Netlify, og den gamle kode ligger stadig i den live side.*
 2. Resultatet af `00b_config_og_funktioner` er sendt, og ingen uventet funktion bruger ejer-koden (Make bruger den ikke, ejerens oplysning 3/10).
 3. Du har rettet `OWNER_TOKEN` i din egen terminal, hvis du bruger `scripts/omsaetning-bagud` (det bruger ejer-koden).
 
@@ -112,7 +112,7 @@ bekræftet det nye.
 - **Ikke testet på din rigtige database.** Efter trin C kører du `00c_tjek_sikkerhedskopi_lukket.sql` (kun læsning): den viser pr. rolle, om skemaet/tabellen kan bruges (alle skal være `false`) og hvilke skemaer API'et udstiller. Send resultatet til Claude.
 - `service_role` (Make) og databaseejeren (`postgres`, dig i SQL Editor) kan altid læse, hvad de har rettigheder til. `00c` viser også `service_role`. Derfor sletter vi kopien hurtigt.
 
-**Hvornår slettes den?**
+**Hvornår slettes den?** *(Ejerens beslutning 3/10: chaufførernes kopi slettes først, når hver chauffør har bekræftet sit nye link (I2), ikke ved F.)*
 - **Ejer-koden: senest samme dag som trin F**, når det nye dashboard-link er set virke (trin F2). Den gamle ejer-kode er i forvejen offentlig i git-historikken, så der er intet at vinde ved at bevare den, og at åbne den igen ville være en fejl.
 - **Hver chauffør:** når han har bekræftet sit nye link og trin I er kørt (trin I2). Chaufførernes gamle koder kan ikke trækkes tilbage fra WhatsApp/SMS, men de er også slukket.
 - **Resten ('alle'):** når den sidste chauffør er færdig (trin K); tabellen fjernes helt.
@@ -158,7 +158,7 @@ Taxi & Flex 22 ApS
 1. **Netlify-adresse:** `superb-daffodil-ca45c8.netlify.app` — indbygget i `2a` og `4a` (adressen er ikke hemmelig).
 2. **Make:** bruger `service_role`, ingen ejer-kode i body, skriver ikke til `config` (ejerens oplysning). **Mangler:** resultatet af `00b` (kun navne og antal) som bekræftelse fra databasen.
 3. **Chaufførernes links:** sendt via WhatsApp og SMS; de nye sendes samme vej. De gamle ligger i chatten og kan ikke trækkes tilbage, så trin I (slukning) er det, der tæller.
-4. **0.1 og merge:** gjort (PR #6, 3/10). **Svar mangler:** er dashboardet testet med `?k=` efter merge (ja/nej)? Og senere med det NYE link (spærren før trin F).
+4. **0.1 og merge:** gjort (PR #6, 3/10). Dashboardet er meldt testet 3/10, men på `v2026-09-29c`, dvs. **før** PR #6. **Mangler:** test af den udrullede `v2026-09-30a` (se spærren før trin F), og senere af det NYE link.
 5. **Hygiejne:** koderne hentes kun på ejerens egen computer, sendes ikke videre, hver chauffør får kun sit eget link, filen slettes bagefter. Koder står aldrig i chat, PR eller commit.
 
 **Læg mærke til:** hvis en chauffør har sendt sit link videre eller har det i en gruppe-chat, ændrer den nye kode intet for dem, der allerede har det gamle, før trin I.
