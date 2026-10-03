@@ -140,6 +140,8 @@ const liste = page => page.$$eval('#aendringListe .aendring', ds => ds.map(d => 
     await page.click(`#${l[0].id} .btn-fortryd`);
     check(dialoger.at(-1).includes('Fortryd godkendelsen?') && dialoger.at(-1).includes('slettes, og fejlkortet kommer tilbage'), 'Bekræftelsen advarer om, at rækken slettes');
     await page.waitForSelector('#fejl-f-1');
+    // fejlkort og tabel genindlæses parallelt (Promise.all i fortrydAendring); vent på tabellen i stedet for at antage, at den er først færdig
+    await page.waitForFunction(() => ![...document.querySelectorAll('#rapporter td')].some(td => td.textContent.includes('1003')));
     check(!(await page.$('#rapporter td:has-text("1003")')), 'Fortryd godkendelse: rækken er væk fra tabellen');
     check(await page.isVisible('#fejl-f-1'), 'Fejlkortet er tilbage');
     l = await liste(page);

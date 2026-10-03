@@ -156,7 +156,7 @@ check(JSON.stringify(await q(`select * from v_lonseddel order by 1, 2`)) === lon
 check(JSON.stringify(await q(`select chauffor, sats1, graense, sats2, del_med_kone from satser order by 1`)) === satserUdenToken, 'Satser (uden tokens) er uændrede');
 
 // ---- Ingen token i scripts/dokumenter ----
-const tekster = ['tokens/00_foerstetjek.sql', 'tokens/00b_config_og_funktioner.sql', 'pending/20260930120000_chauffor_tokens.sql', 'tokens/0_sikkerhedskopi_gamle_tokens.sql', 'tokens/1_ejer_opret_ny_kode.sql', 'tokens/2a_hent_ejer_link.sql', 'tokens/3_ejer_sluk_gammel_kode.sql',
+const tekster = ['tokens/00_foerstetjek.sql', 'tokens/00b_config_og_funktioner.sql', 'tokens/00c_tjek_sikkerhedskopi_lukket.sql', 'tokens/6_ryd_op_sikkerhedskopi.sql', 'pending/20260930120000_chauffor_tokens.sql', 'tokens/0_sikkerhedskopi_gamle_tokens.sql', 'tokens/1_ejer_opret_ny_kode.sql', 'tokens/2a_hent_ejer_link.sql', 'tokens/3_ejer_sluk_gammel_kode.sql',
   'tokens/4_chauffoer_opret_ny_kode.sql', 'tokens/4a_hent_chauffoer_link.sql', 'tokens/5_chauffoer_sluk_gammel_kode.sql', 'tilbagefoering/20260930_tilbage_ejer_kode.sql', 'tilbagefoering/20260930_tilbage_chauffoer_koder.sql'].map(fil).join('\n');
 check(!/[0-9a-f]{32}/.test(tekster), 'Ingen token-lignende tekst (32+ hex-tegn) i nogen af scriptsene');
 console.log(f ? `\n${f} FEJL` : '\nALLE TESTS BESTÅET'); process.exit(f ? 1 : 0);

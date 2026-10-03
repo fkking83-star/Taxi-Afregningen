@@ -19,7 +19,7 @@ uden at nogen mister adgang undervejs.
 |---|---|---|---|
 | a | Ejer først, så én chauffør ad gangen, med overlap | "Rækkefølge" (trin D–F ejer, G–J chauffør for chauffør); gamle og nye koder virker side om side, til du selv slukker | ✓ |
 | b | Liste over dine links og bogmærker, der stopper | "Hvad holder op med at virke" (opdateret 3/10) | ✓ |
-| c | Tilbageføring | "Tilbageføring" (ejer, chauffører og migration; kopien bevares til trin K) | ✓ |
+| c | Tilbageføring | "Tilbageføring" (ejer, chauffører og migration; kopien af en gammel kode bevares kun, til den er bekræftet slukket og slettet, se "Kopien af de gamle koder") | ✓ |
 | d | SQL vist først | Hvert script **vises i chatten, før det køres**, og køres først efter dit ja (kolonnen "Vist i chat" nedenfor). Ændrede/nye i dag: `2a`, `4a`, `00b` | ✓ rettet: reglen er nu et trin i tabellen |
 | e | Færdig beskedtekst til chaufførerne | "Færdig besked til hver chauffør" (rettet til WhatsApp/SMS: *slet den gamle besked med dit gamle link*) | ✓ |
 
@@ -33,9 +33,10 @@ uden at nogen mister adgang undervejs.
 
 Filer (alle på branchen, intet kørt):
 - `supabase/pending/20260930120000_chauffor_tokens.sql` — migration (nøgle + tabel + de to funktioner). Nødplan: `supabase/tilbagefoering/20260930120000_chauffor_tokens.sql`.
-- `supabase/tokens/00_foerstetjek.sql` … `6_ryd_op_sikkerhedskopi.sql` — selve skiftet, ét script pr. trin.
+- `supabase/tokens/00_foerstetjek.sql` … `6_ryd_op_sikkerhedskopi.sql` — selve skiftet, ét script pr. trin (`00b`: config og funktioner, `00c`: er kopien lukket for anon; begge kun læsning).
 - `supabase/tilbagefoering/20260930_tilbage_ejer_kode.sql` og `…_tilbage_chauffoer_koder.sql` — åbner de gamle koder igen.
 - `tests/sql/tokens_skift.test.mjs` — spiller hele forløbet igennem på en testdatabase (62 tjek).
+- `tests/sql/tokens_oprydning.test.mjs` — kopiens beskyttelse og sletning i dele (trin 6).
 
 ## Rækkefølge
 
@@ -49,11 +50,13 @@ Ejeren kører SQL i SQL Editor. Claude skriver, tester og viser SQL først.
 | D | **Ejer:** ny kode ved siden af den gamle | `1_ejer_opret_ny_kode` | Ingen (begge virker) | `config` har 2 ejer-koder |
 | E | **Ejer:** hent nyt dashboard-link som CSV | `2a_hent_ejer_link` (ret adressen) | Ingen | Åbn linket: alle tal som før. Flyt bogmærker/ikoner til det nye link |
 | F | **Ejer:** sluk den gamle kode | `3_ejer_sluk_gammel_kode` | **Gamle ejer-links holder op** (se nedenfor) | Nyt link virker; gammelt viser "Ejer-koden i linket gav ingen data" |
+| F2 | **Ejer:** slet kopien af den gamle ejer-kode (**senest samme dag som F**, når det nye link er set virke) | `6_ryd_op_sikkerhedskopi` med `'ejer'` | Ingen. Tilbageføring af ejer-koden er herefter ikke mulig (bevidst: den gamle kode var offentlig) | Scriptet stopper selv, hvis den gamle kode stadig virker |
 | G | **Chauffør 1** (ét navn ad gangen): ny kode ved siden af | `4_chauffoer_opret_ny_kode` | Ingen | Kvittering med gammelt link virker stadig |
 | H | Hent link og færdig besked som CSV | `4a_hent_chauffoer_link` | Ingen | Ejeren sender beskeden; chaufføren bekræfter, at det nye link virker |
 | I | Sluk chaufførens gamle kode (efter få dage) | `5_chauffoer_sluk_gammel_kode` | **Chaufførens gamle link holder op** | Nyt link virker; gammelt giver tom kvittering |
-| J | Gentag G–I for næste chauffør | | | |
-| K | Oprydning (tidligst en uge efter sidste sluk) | `6_ryd_op_sikkerhedskopi` | Gamle links kan ikke åbnes igen | |
+| I2 | Slet kopien af chaufførens gamle kode, når han har bekræftet det nye link | `6_ryd_op_sikkerhedskopi` med hans navn | Ingen. Tilbageføring for ham er herefter ikke mulig | Scriptet stopper selv, hvis hans gamle kode stadig virker |
+| J | Gentag G–I2 for næste chauffør | | | |
+| K | Til sidst: fjern hele kopien | `6_ryd_op_sikkerhedskopi` med `'alle'` | Ingen | Stopper uden at slette noget, hvis en gammel kode stadig virker |
 
 **Regler for hvert trin:** (1) Claude viser scriptet i chatten. (2) Du svarer ja. (3) Du kører det i SQL Editor. (4) Du siger "virker / virker ikke". Ingen scripts kører i bunker.
 
@@ -76,7 +79,24 @@ bekræftet det nye.
 - Ejer: `tilbagefoering/20260930_tilbage_ejer_kode.sql` — den gamle kode virker igen, den nye også.
 - Chauffør: `tilbagefoering/20260930_tilbage_chauffoer_koder.sql` — ret navnet, eller skriv `alle`. Gammelt link virker igen, nyt også.
 - Migrationen: `tilbagefoering/20260930120000_chauffor_tokens.sql` (stopper, så længe der er to ejer-koder).
-- Kopien ligger i `sikkerhed_backup.tokens_gamle_20260930` (ikke nået af API'et) og bevares, til trin K.
+- Kopien ligger i `sikkerhed_backup.tokens_gamle_20260930`. Den slettes **i dele** (se næste afsnit), så de gamle koder ikke ligger længere end nødvendigt.
+
+## Kopien af de gamle koder (`sikkerhed_backup`)
+
+**Kan anon/authenticated læse den? Nej.**
+- Skemaet `sikkerhed_backup` er oprettet med `revoke all … from public, anon, authenticated` på både skema og tabel (trin 0). Uden `usage` på skemaet kan de to roller ikke engang nå tabellen.
+- API'et udstiller kun de skemaer, der står i Supabase-indstillingen "Exposed schemas" (normalt `public` og `graphql_public`); `sikkerhed_backup` står der ikke.
+- Testet på testdatabasen (`tests/sql/tokens_oprydning.test.mjs`): `anon` og `authenticated` kan hverken læse, tælle eller slette i tabellerne i skemaet.
+- **Ikke testet på din rigtige database.** Efter trin C kører du `00c_tjek_sikkerhedskopi_lukket.sql` (kun læsning): den viser pr. rolle, om skemaet/tabellen kan bruges (alle skal være `false`) og hvilke skemaer API'et udstiller. Send resultatet til Claude.
+- `service_role` (Make) og databaseejeren (`postgres`, dig i SQL Editor) kan altid læse, hvad de har rettigheder til. `00c` viser også `service_role`. Derfor sletter vi kopien hurtigt.
+
+**Hvornår slettes den?**
+- **Ejer-koden: senest samme dag som trin F**, når det nye dashboard-link er set virke (trin F2). Den gamle ejer-kode er i forvejen offentlig i git-historikken, så der er intet at vinde ved at bevare den, og at åbne den igen ville være en fejl.
+- **Hver chauffør:** når han har bekræftet sit nye link og trin I er kørt (trin I2). Chaufførernes gamle koder kan ikke trækkes tilbage fra WhatsApp/SMS, men de er også slukket.
+- **Resten ('alle'):** når den sidste chauffør er færdig (trin K); tabellen fjernes helt.
+- **Sletningen er endelig:** efter den kan tilbageføringen ikke åbne de slettede gamle links igen. Den stopper med en tydelig besked og ændrer intet. Hvis noget går galt *før* sletningen, virker tilbageføringen som beskrevet.
+- **Sikring i `6_ryd_op_sikkerhedskopi`:** den sletter intet, hvis den gamle kode stadig virker (ejer: findes stadig i `config`; chauffør: er stadig hans token), og med `'alle'` er det alt eller intet. Fejlen nævner kun navne, aldrig koder.
+- Den separate kopi af rettighederne (`rettigheder_20260929`, fra lockdown'en) indeholder ingen koder og røres ikke.
 
 ## Hvad holder op med at virke — præcist
 

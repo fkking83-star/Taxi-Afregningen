@@ -2,6 +2,8 @@
 
 Status: **plan, ikke godkendt. Intet er bygget, ingen SQL er kørt.** Skrevet 3/10-2026. Hører til Fase 2 i `docs/byggeplan.md`.
 
+**Ejerens beslutning 3/10-2026:** der bygges **intet**, og der registreres **ingen rigtige attester**, før en jurist har vurderet GDPR-punkterne nederst. Indtil da må kun **testdata** bruges (opdigtede navne og datoer, aldrig rigtige chauffører). De 12 måneder for børne- og straffeattest bekræfter ejeren, når kontrakterne er tjekket (punkt E er derfor åbent).
+
 **Mål:** at du aldrig opdager for sent, at en chaufførs kørekort, førerkort, børneattest eller straffeattest er udløbet eller for gammelt. Systemet gemmer **kun datoer og status**, viser trafiklys i dashboardet og sender påmindelser. Det er **kun en advarsel**: det blokerer aldrig løn, upload eller kvittering.
 
 **Rører ikke:** lønberegningen (`v_data`, `v_afregning`, `v_lonseddel`, `satser`), `kvittering.html`, `index.html`, Make, de eksisterende dashboard-funktioner. Alt er nyt og ligger ved siden af.
@@ -118,7 +120,7 @@ Beregnes **ét sted, i databasen** (funktionen leverer status, dashboardet viser
 | B | "Mangler" = grå eller rød? | Grå, til de første dokumenter er indtastet |
 | C | Fil-upload: ikke nu? | Ikke nu |
 | D | `virksomhed_id` som `integer default 1` uden fremmednøgle, til 1.1 findes? | Ja |
-| E | Børne-/straffeattest: X = 12 måneder? | Ja, du bekræfter |
+| E | Børne-/straffeattest: X = 12 måneder? | **Åbent: ejeren bekræfter, når kontrakterne er tjekket** |
 | F | Note-felt slået fra for børne- og straffeattest? | Ja |
 | G | Kortet bag `?dokumenter=1` først? | Ja |
 | H | Påmindelser: kun dashboard, til den daglige mail findes? | Ja |

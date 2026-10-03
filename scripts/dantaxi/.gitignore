@@ -1,0 +1,4 @@
+# Dantaxi-filer må ikke i repoet (fakturadata)
+*.pdf
+spec*.txt
+*specifikation*.txt

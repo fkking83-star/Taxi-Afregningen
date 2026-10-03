@@ -78,7 +78,7 @@ den nye · intet i Makes kø · backup (0.8) er på plads.
 | Opgave | Hvem |
 |---|---|
 | Daglig e-mail (Resend): nye vagter, det der venter på godkendelse, advarsel >24 t, chauffør der ikke har sendt i 2 døgn | 🟦 |
-| **Chauffør-dokumenter med udløbsdato** (kørekort, førerkort, børneattest, straffeattest; kun datoer, trafiklys, påmindelser, aldrig blokering). Plan: `docs/plan-chauffoer-dokumenter.md` (ikke godkendt, intet bygget). Kræver GDPR-afklaring først | 🟩 |
+| **Chauffør-dokumenter med udløbsdato** (kørekort, førerkort, børneattest, straffeattest; kun datoer, trafiklys, påmindelser, aldrig blokering). Plan: `docs/plan-chauffoer-dokumenter.md` (ikke godkendt, intet bygget; **bygges ikke og registrerer ingen rigtige attester, før en jurist har vurderet GDPR-punkterne**, kun testdata). Kræver GDPR-afklaring først | 🟩 |
 | Indlæsningslog og fejlovervågning (kilde, resultat, varighed, fejl) | 🟦 |
 | Automatisk test af hele kæden hver nat ("kanariefugl": en testbon gennem systemet; alarm hvis den fejler) | 🟦 |
 | Ændringslog + Fortryd ✓ (bygget); udvides til alle ændringer | 🟦 |
