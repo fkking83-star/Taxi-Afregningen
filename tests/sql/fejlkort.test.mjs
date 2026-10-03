@@ -5,7 +5,7 @@ import { readFileSync } from 'fs';
 import { bygFraMigrationer } from '../hjaelpere/skema.mjs';
 let f = 0; const check = (ok, m) => { console.log(`${ok ? 'PASS' : 'FAIL'}  ${m}`); if (!ok) f++; };
 const FORSLAG = readFileSync(new URL('../../supabase/migrations/20260929120000_fejlkort_raa_data_dublet.sql', import.meta.url), 'utf8');
-const SIKKERHED = readFileSync(new URL('../../supabase/pending/20260929100000_luk_direkte_adgang.sql', import.meta.url), 'utf8');
+const SIKKERHED = readFileSync(new URL('../../supabase/migrations/20260930100000_luk_direkte_adgang.sql', import.meta.url), 'utf8');
 
 const { db, fejl } = await bygFraMigrationer({ til: '20260928120000_opret_slutrapport.sql' });
 check(!fejl, 'Kæden bygger' + (fejl ? ': ' + fejl.besked : ''));

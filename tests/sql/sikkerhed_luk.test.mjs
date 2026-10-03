@@ -1,12 +1,13 @@
-// Forslaget supabase/pending/20260929100000_luk_direkte_adgang.sql:
+// Migrationen supabase/migrations/20260930100000_luk_direkte_adgang.sql (kørt live 30/9-2026). Kæden bygges til og med migrationen før:
 // FØR: anon kan læse tokens/løn og ændre satser direkte. EFTER: kun RPC'erne virker for anon.
 // Bygger hele kæden fra supabase/migrations/ og lægger live's grants oveni (tjekket 29/9-2026).
 import { readFileSync } from 'fs';
 import { bygFraMigrationer } from '../hjaelpere/skema.mjs';
 let f = 0; const check = (ok, m) => { console.log(`${ok ? 'PASS' : 'FAIL'}  ${m}`); if (!ok) f++; };
-const FORSLAG = readFileSync(new URL('../../supabase/pending/20260929100000_luk_direkte_adgang.sql', import.meta.url), 'utf8');
+const FORSLAG = readFileSync(new URL('../../supabase/migrations/20260930100000_luk_direkte_adgang.sql', import.meta.url), 'utf8');
+const TILBAGE = readFileSync(new URL('../../supabase/tilbagefoering/20260929100000_luk_direkte_adgang.sql', import.meta.url), 'utf8');
 
-const { db, fejl } = await bygFraMigrationer();
+const { db, fejl } = await bygFraMigrationer({ til: '20260929130000_aendringslog.sql' });
 check(!fejl, 'Kæden bygger' + (fejl ? ': ' + fejl.besked : ''));
 await db.exec(`
   alter role service_role bypassrls;   -- som i Supabase
@@ -50,6 +51,16 @@ check(!foer['SELECT fra v_lonseddel (alles løn)'].fejl, 'FØR: anon kan læse a
 await db.exec(`update satser set sats1 = 0.5 where chauffor = 'Fuad'; delete from slutrapporter where slutrapport_nr = '9999';
                update slutrapporter set indkort = 2000 where chauffor = 'Adan';`);
 const lonFoer = (await db.query(`select chauffor, til_udbetaling from v_lonseddel order by 1`)).rows;
+
+// Alle anon/authenticated-rettigheder på tabeller, views og sekvenser i public, som sammenlignelig tekst
+const rettigheder = async () => (await db.query(`
+  select c.relname || ':' || r.rolname || ':' || a.privilege_type k
+  from pg_class c join pg_namespace n on n.oid = c.relnamespace
+  cross join lateral aclexplode(c.relacl) a join pg_roles r on r.oid = a.grantee
+  where n.nspname = 'public' and c.relkind in ('r','v','m','S','p','f') and r.rolname in ('anon','authenticated')
+  order by 1`)).rows.map(x => x.k);
+const rls = async () => (await db.query(`select relname, relrowsecurity from pg_class where relname in ('satser','slutrapporter') order by 1`)).rows.map(x => x.relname + '=' + x.relrowsecurity).join();
+const rettighederFoer = await rettigheder(), rlsFoer = await rls();
 
 // ---------- Forslaget ----------
 let kfejl = null; try { await db.exec(FORSLAG); } catch (e) { kfejl = e.message; }
@@ -95,6 +106,30 @@ check(sr === 2, 'service_role kan stadig læse og indsætte i slutrapporter' + (
 await db.exec(`create table ny_tabel (x int)`);
 check(!(await db.query(`select has_table_privilege('anon', 'ny_tabel', 'select') s`)).rows[0].s, 'En ny tabel giver ikke anon adgang automatisk');
 
+// ---------- Sikkerhedskopi og tilbageføring ----------
+const kopi = (await db.query(`select objekt || ':' || grantee || ':' || privilegie k from sikkerhed_backup.rettigheder_20260929 order by 1`)).rows.map(x => x.k);
+check(kopi.length === rettighederFoer.length && kopi.join() === rettighederFoer.join() && kopi.includes('satser:anon:SELECT'),
+  `Sikkerhedskopien indeholder præcis rettighederne fra før lukningen (${kopi.length} stk.)`);
+check((await rettigheder()).length === 0, 'Efter lukningen har anon/authenticated ingen rettigheder på tabeller, views eller sekvenser');
+let rr = await somAnon(`select * from sikkerhed_backup.rettigheder_20260929`);
+check(naegtet(rr), 'Anon kan ikke læse sikkerhedskopien');
+let tfejl = null; try { await db.exec(TILBAGE); } catch (e) { tfejl = e.message; }
+check(!tfejl, 'Tilbageføringen kører uden fejl' + (tfejl ? ': ' + tfejl : ''));
+check((await rettigheder()).join() === rettighederFoer.join(), 'Tilbageføring: præcis de samme rettigheder som før lukningen');
+check(await rls() === rlsFoer, `Tilbageføring: RLS som før (${rlsFoer})`);
+rr = await somAnon(`select token from satser`);
+check(!rr.fejl && rr.rows.length === 2, 'Tilbageføring: anon kan igen læse satser (alt er åbent som før)');
+rr = await somAnon(`select * from lonseddel('Adan', '2026-09')`);
+check(!rr.fejl, 'Tilbageføring: lonseddel() kan kaldes igen');
+rr = await somAnon(`select chauffor from hent_alle('ejer')`);
+check(!rr.fejl && rr.rows.length === 2, 'Tilbageføring: dashboardets funktioner virker stadig');
+
+// ---------- Luk igen efter en tilbageføring ----------
 let igen = null; try { await db.exec(FORSLAG); } catch (e) { igen = e.message; }
 check(!igen, 'Kan køres igen');
+check((await rettigheder()).length === 0 && await rls() === 'satser=true,slutrapporter=true', 'Lukket igen: ingen rettigheder, RLS til');
+const kopi2 = (await db.query(`select objekt || ':' || grantee || ':' || privilegie k from sikkerhed_backup.rettigheder_20260929 order by 1`)).rows.map(x => x.k);
+check(kopi2.join() === kopi.join(), 'Sikkerhedskopien er ikke overskrevet af den nye kørsel');
+rr = await somAnon(`select token from satser`);
+check(naegtet(rr), 'Lukket igen: anon afvises på satser');
 console.log(f ? `\n${f} FEJL` : '\nALLE TESTS BESTÅET'); process.exit(f ? 1 : 0);
