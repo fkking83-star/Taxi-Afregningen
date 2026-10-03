@@ -6,6 +6,12 @@ declare
   v_navn text := 'Fuad';   -- ← RET KUN DENNE LINJE: chaufførens navn præcis som i satser
   v_ny text;
 begin
+  if to_regclass('public.chauffor_tokens') is null then
+    raise exception 'Kør først migrationen (supabase/pending/20260930120000_chauffor_tokens.sql) – den nye nøgle/tabel findes ikke endnu. Intet er ændret.';
+  end if;
+  if to_regclass('sikkerhed_backup.tokens_gamle_20260930') is null then
+    raise exception 'Kør først trin 0 (0_sikkerhedskopi_gamle_tokens.sql) – kopien af de gamle koder findes ikke endnu. Intet er ændret.';
+  end if;
   if not exists (select 1 from sikkerhed_backup.tokens_gamle_20260930 where art = 'chauffør' and navn = v_navn) then
     raise exception 'Kopien af den gamle kode for % mangler — intet ændret', v_navn;
   end if;

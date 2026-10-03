@@ -38,13 +38,35 @@ Filer (alle på branchen, intet kørt):
 - `tests/sql/tokens_skift.test.mjs` — spiller hele forløbet igennem på en testdatabase (62 tjek).
 - `tests/sql/tokens_oprydning.test.mjs` — kopiens beskyttelse og sletning i dele (trin 6).
 
-## Rækkefølge
+## Præcis rækkefølge af scripts (3/10-2026)
+
+Hvert script vises i chatten og køres først efter dit ja. Rækkefølge ud over denne giver en forklarende fejl ("Kør først …"), aldrig en rå databasefejl, og intet ændres.
+
+| # | Script | Hvad det gør | Skal være sandt, før næste trin |
+|---|---|---|---|
+| 1 | `00_foerstetjek`, `00b_config_og_funktioner`, `00d_foer_migrationen` (kun læsning) | Viser antal ejer-koder og tokens, nøglenavne og funktionsnavne, og de to funktioner migrationen erstatter | 1 ejer-kode; ingen funktion bruger `on conflict` på `config`; de to definitioner er set |
+| 2 | **Migration** `pending/20260930120000_chauffor_tokens` | `config`: primærnøgle → unik (n, v); ny lukket tabel `chauffor_tokens`; `hent_kvittering` og `hent_ture` slår op begge steder | Dashboard og én kvittering virker som før; `chauffor_tokens` findes og er tom |
+| 3 | `0_sikkerhedskopi_gamle_tokens` | Kopi af alle nuværende tokens i `sikkerhed_backup` (kun antal vises) | Antal passer (1 ejer + alle chauffører) |
+| 3b | `00c_tjek_sikkerhedskopi_lukket` (kun læsning) | Viser, at anon/authenticated ikke kan nå kopien | Alle `false` |
+| 4 | `1_ejer_opret_ny_kode` | Ny ejer-kode ved siden af den gamle | `ejer_koder_nu` = 2; gammelt dashboard-link virker stadig |
+| 5 | `2a_hent_ejer_link` (kun læsning) | Viser det nye dashboard-link (CSV) | Nyt link åbnet på computer og telefon: tallene er som før; bogmærker flyttet |
+| 6 | `3_ejer_sluk_gammel_kode` (**trin F**) | Gammel ejer-kode slukket | Nyt link virker; gammelt giver "Ejer-koden i linket gav ingen data"; `ejer_koder_nu` = 1. Spærren (se nedenfor) opfyldt før kørsel |
+| 7 | `6_ryd_op_sikkerhedskopi` med `'ejer'` (F2) | Sletter kopien af den gamle ejer-kode | Senest samme dag som trin 6 |
+| 8 | pr. chauffør: `4_chauffoer_opret_ny_kode` | Nyt link ved siden af det gamle | `nye_links` = 1; gammelt link virker stadig |
+| 9 | pr. chauffør: `4a_hent_chauffoer_link` (kun læsning) | Link og færdig besked (CSV) | Beskeden sendt via WhatsApp/SMS; chaufføren bekræfter, at det nye link virker |
+| 10 | pr. chauffør: `5_chauffoer_sluk_gammel_kode` (efter få dage) | Gammelt link slukket, nyt bliver hans faste | Nyt link virker; gammelt giver tom kvittering |
+| 11 | pr. chauffør: `6_ryd_op_sikkerhedskopi` med hans navn (I2) | Sletter kopien af hans gamle kode | Trin 10 kørt for ham |
+| 12 | `6_ryd_op_sikkerhedskopi` med `'alle'` (K) | Fjerner resten af kopien og tabellen | Alle chauffører færdige |
+
+*(Trin 8–11 gentages for én chauffør ad gangen.)*
+
+## Rækkefølge (oprindelig oversigt)
 
 Ejeren kører SQL i SQL Editor. Claude skriver, tester og viser SQL først.
 
 | # | Trin | Script | Effekt for brugere | Efter trinnet testes |
 |---|---|---|---|---|
-| A | Første tjek (kun læsning) | `00_foerstetjek` og `00b_config_og_funktioner` | Ingen | Forventet: 1 ejer-kode, alle chauffører har token, ingen dubletter; `config` har kun `owner_token`; ingen uventet funktion skriver til `config`. Resultatet (kun navne og antal) sendes til Claude |
+| A | Første tjek (kun læsning) | `00_foerstetjek`, `00b_config_og_funktioner` og `00d_foer_migrationen` | Ingen | Forventet: 1 ejer-kode, alle chauffører har token, ingen dubletter; `config` har kun `owner_token`; ingen uventet funktion skriver til `config`. Resultatet (kun navne og antal) sendes til Claude |
 | B | Migration (overlap muligt) | `pending/20260930120000_chauffor_tokens` | Ingen (gamle koder virker uændret) | Dashboard og en kvittering virker som før |
 | C | Kopi af gamle tokens | `0_sikkerhedskopi_gamle_tokens` | Ingen | Viser kun antal (1 ejer + alle chauffører) |
 | D | **Ejer:** ny kode ved siden af den gamle | `1_ejer_opret_ny_kode` | Ingen (begge virker) | `config` har 2 ejer-koder |

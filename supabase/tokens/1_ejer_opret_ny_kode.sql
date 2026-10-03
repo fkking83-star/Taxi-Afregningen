@@ -2,6 +2,12 @@
 -- Koden dannes i databasen og vises ikke her. Hent linket med 2a_hent_ejer_link.sql.
 do $$
 begin
+  if not exists (select 1 from pg_constraint where conrelid = 'public.config'::regclass and conname = 'config_n_v_key') then
+    raise exception 'Kør først migrationen (supabase/pending/20260930120000_chauffor_tokens.sql) – den nye nøgle/tabel findes ikke endnu. Intet er ændret.';
+  end if;
+  if to_regclass('sikkerhed_backup.tokens_gamle_20260930') is null then
+    raise exception 'Kør først trin 0 (0_sikkerhedskopi_gamle_tokens.sql) – kopien af de gamle koder findes ikke endnu. Intet er ændret.';
+  end if;
   if not exists (select 1 from sikkerhed_backup.tokens_gamle_20260930 where art = 'ejer' and token is not null) then
     raise exception 'Kør først 0_sikkerhedskopi_gamle_tokens.sql — intet ændret';
   end if;

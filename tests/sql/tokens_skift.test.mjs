@@ -35,6 +35,9 @@ const tjek = await kor(S('00_foerstetjek'));
 check(tjek.some(x => x.hvad === 'ejer_koder' && x.vaerdi === '1') && tjek.some(x => x.hvad === 'chauffør Abdikarin' && x.vaerdi === 'INGEN token') && tjek.some(x => x.hvad === 'chauffør Fuad' && x.vaerdi === 'har token (11 tegn)') && tjek.some(x => x.hvad === 'token brugt af flere chauffører' && x.vaerdi === '0'),
   'Første tjek: antal ejer-koder, hvem der har token, og dubletter');
 check(!JSON.stringify(tjek).includes('gammel-'), 'Første tjek indeholder ingen token-værdier');
+const foerMig = await kor(S('00d_foer_migrationen'));
+check(foerMig.filter(x => x.art === 'definition').map(x => x.navn).join() === 'hent_kvittering,hent_ture' && foerMig.some(x => x.art === 'config-nøgle' && x.navn === 'config_pkey' && /PRIMARY KEY \(n\)/.test(x.indhold)) && !foerMig.some(x => x.art === 'on conflict + config') && !foerMig.some(x => x.art === 'fremmednøgle til config') && !JSON.stringify(foerMig).includes('gammel-'),
+  'Før-migration-tjek: viser de to funktioners definitioner og config\'s primærnøgle; ingen on conflict-funktion, ingen fremmednøgle; ingen token-værdier');
 const cfg = await kor(S('00b_config_og_funktioner'));
 check(cfg.some(x => x.hvad === 'config-nøgle: owner_token' && x.antal === '1') && cfg.some(x => x.hvad === 'funktion nævner config/owner_token' && x.antal === 'hent_alle') && !JSON.stringify(cfg).includes('gammel-'),
   'Config-forespørgslen: viser nøglenavne, antal og funktionsnavne (fx hent_alle), aldrig token-værdier');
@@ -76,7 +79,7 @@ check((await alle(nyEjer)).length === 2 && (await alle('gammel-ejer')).length ==
 check(await fejlVed(S('1_ejer_opret_ny_kode')) !== null && (await q(`select count(*)::int n from config where n = 'owner_token'`))[0].n === 2, 'Trin 1 kan ikke køres to gange (ingen tredje kode)');
 // Link
 check(S('2a_hent_ejer_link').includes(ADRESSE) && S('4a_hent_chauffoer_link').includes(ADRESSE), 'Trin 2a og 4a har ejerens Netlify-adresse indbygget');
-check((await kor(udenAdresse(S('2a_hent_ejer_link')))).length === 0, 'Trin 2a: uden adresse vises intet');
+{ const m = await fejlVed(udenAdresse(S('2a_hent_ejer_link'))); check(m !== null && /Adressen mangler/.test(m), 'Trin 2a: uden adresse stopper scriptet med en forklaring (intet vises)'); }
 ud = await kor(medBase(S('2a_hent_ejer_link')));
 check(ud.length === 1 && ud[0].dashboard_link === `${BASE}/dashboard.html?k=${nyEjer}` && !ud[0].dashboard_link.includes('gammel-ejer'), 'Trin 2a: linket er adresse + /dashboard.html?k= + NY kode (ikke den gamle)');
 
@@ -109,8 +112,8 @@ check(await fejlVed(medNavn(S('4_chauffoer_opret_ny_kode'), 'Fuad')) !== null &&
 ud = await kor(medNavn(medBase(S('4a_hent_chauffoer_link')), 'Fuad'));
 check(ud.length === 1 && ud[0].link === `${BASE}/kvittering.html?k=${nyFuad}`, 'Trin 4a: linket er adresse + /kvittering.html?k= + Fuads nye kode');
 check(ud[0].besked.startsWith('Hej Fuad!') && ud[0].besked.includes(ud[0].link) && ud[0].besked.includes('nyt, personligt link') && ud[0].besked.includes('gamle link bliver lukket om få dage') && ud[0].besked.includes('slet den gamle besked') && !ud[0].besked.includes('gammel-fuad'), 'Trin 4a: færdig besked med navn, det nye link og oplysning om det gamle');
-check((await kor(medNavn(udenAdresse(S('4a_hent_chauffoer_link')), 'Fuad'))).length === 0, 'Trin 4a: uden adresse vises intet');
-check((await kor(medNavn(medBase(S('4a_hent_chauffoer_link')), 'Adan'))).length === 0, 'Trin 4a: ingen link for en chauffør uden nyt link');
+{ const m = await fejlVed(medNavn(udenAdresse(S('4a_hent_chauffoer_link')), 'Fuad')); check(m !== null && /Adressen mangler/.test(m), 'Trin 4a: uden adresse stopper scriptet med en forklaring (intet vises)'); }
+{ const m = await fejlVed(medNavn(medBase(S('4a_hent_chauffoer_link')), 'Adan')); check(m !== null && /Adan har intet nyt link endnu/.test(m) && /trin 4/.test(m), 'Trin 4a: for en chauffør uden nyt link stopper scriptet og siger, at trin 4 skal køres først'); }
 
 // ---- Chauffør: sluk gammel ----
 e = await fejlVed(medNavn(S('5_chauffoer_sluk_gammel_kode'), 'Fuad'));
@@ -156,7 +159,7 @@ check(JSON.stringify(await q(`select * from v_lonseddel order by 1, 2`)) === lon
 check(JSON.stringify(await q(`select chauffor, sats1, graense, sats2, del_med_kone from satser order by 1`)) === satserUdenToken, 'Satser (uden tokens) er uændrede');
 
 // ---- Ingen token i scripts/dokumenter ----
-const tekster = ['tokens/00_foerstetjek.sql', 'tokens/00b_config_og_funktioner.sql', 'tokens/00c_tjek_sikkerhedskopi_lukket.sql', 'tokens/6_ryd_op_sikkerhedskopi.sql', 'pending/20260930120000_chauffor_tokens.sql', 'tokens/0_sikkerhedskopi_gamle_tokens.sql', 'tokens/1_ejer_opret_ny_kode.sql', 'tokens/2a_hent_ejer_link.sql', 'tokens/3_ejer_sluk_gammel_kode.sql',
+const tekster = ['tokens/00_foerstetjek.sql', 'tokens/00b_config_og_funktioner.sql', 'tokens/00c_tjek_sikkerhedskopi_lukket.sql', 'tokens/00d_foer_migrationen.sql', 'tokens/6_ryd_op_sikkerhedskopi.sql', 'pending/20260930120000_chauffor_tokens.sql', 'tokens/0_sikkerhedskopi_gamle_tokens.sql', 'tokens/1_ejer_opret_ny_kode.sql', 'tokens/2a_hent_ejer_link.sql', 'tokens/3_ejer_sluk_gammel_kode.sql',
   'tokens/4_chauffoer_opret_ny_kode.sql', 'tokens/4a_hent_chauffoer_link.sql', 'tokens/5_chauffoer_sluk_gammel_kode.sql', 'tilbagefoering/20260930_tilbage_ejer_kode.sql', 'tilbagefoering/20260930_tilbage_chauffoer_koder.sql'].map(fil).join('\n');
 check(!/[0-9a-f]{32}/.test(tekster), 'Ingen token-lignende tekst (32+ hex-tegn) i nogen af scriptsene');
 console.log(f ? `\n${f} FEJL` : '\nALLE TESTS BESTÅET'); process.exit(f ? 1 : 0);

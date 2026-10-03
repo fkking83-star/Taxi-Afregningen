@@ -3,6 +3,9 @@
 -- Fortryd med det samme: supabase/tilbagefoering/20260930_tilbage_ejer_kode.sql
 do $$
 begin
+  if to_regclass('sikkerhed_backup.tokens_gamle_20260930') is null then
+    raise exception 'Kør først trin 0 (0_sikkerhedskopi_gamle_tokens.sql) – kopien af de gamle koder findes ikke endnu. Intet er ændret.';
+  end if;
   if not exists (select 1 from sikkerhed_backup.tokens_gamle_20260930 where art = 'ejer' and token is not null) then
     raise exception 'Kopien af den gamle ejer-kode mangler — intet ændret';
   end if;
