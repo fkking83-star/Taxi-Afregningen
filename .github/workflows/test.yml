@@ -26,3 +26,11 @@ jobs:
       - run: npm ci
       - run: npx playwright install --with-deps chromium
       - run: npm test
+      - name: Gem loggen fra de tests der fejlede
+        if: failure()
+        uses: actions/upload-artifact@v5
+        with:
+          name: fejllog
+          path: tests/fejllog/
+          if-no-files-found: ignore
+          retention-days: 30

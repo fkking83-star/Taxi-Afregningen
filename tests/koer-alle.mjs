@@ -1,6 +1,6 @@
 // Kører alle tests i tests/ (sql, enhed, browser) én ad gangen og giver en samlet oversigt.
 // Brug: cd tests && npm test        (eller: node koer-alle.mjs sql  for kun én mappe)
-import { readdirSync } from 'fs';
+import { readdirSync, mkdirSync, writeFileSync } from 'fs';
 import { spawnSync } from 'child_process';
 import { fileURLToPath } from 'url';
 import path from 'path';
@@ -17,6 +17,12 @@ for (const mappe of mapper) {
     const ok = k.status === 0;
     resultat.push({ test: `${mappe}/${fil}`, ok, bestaaet, fejlet, sek: ((Date.now() - start) / 1000).toFixed(1) });
     console.log(`${ok ? 'OK  ' : 'FEJL'}  ${mappe}/${fil}  (${bestaaet} tjek, ${((Date.now() - start) / 1000).toFixed(1)} s)`);
+    if (!ok) {   // hele outputtet gemmes, så en fejl der kun kommer en gang (timing) kan findes bagefter; i CI uploades mappen som artefakt
+      mkdirSync(path.join(her, 'fejllog'), { recursive: true });
+      const logfil = path.join('fejllog', `${mappe}-${fil}.txt`);
+      writeFileSync(path.join(her, logfil), `${new Date().toISOString()}  ${mappe}/${fil}  status=${k.status} signal=${k.signal}\n\n${ud}`);
+      console.log(`      (fuld log: tests/${logfil.replace(/\\/g, '/')})`);
+    }
     if (!ok) { (fejlet.length ? fejlet : [ud.trim().split('\n').slice(-8).join('\n')]).forEach(l => console.log('      ' + l)); }
   }
 }

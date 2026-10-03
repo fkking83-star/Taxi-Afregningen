@@ -1,6 +1,6 @@
 -- Punkt 0.2, trin 2a. KUN LÆSNING. Viser dit nye dashboard-link (ét felt). Tryk "Download CSV" i SQL Editor og åbn filen lokalt.
 -- Del aldrig linket i chat, mail eller kode. Slet CSV-filen, når linket er gemt som bogmærke/ikon.
-with base as (select 'https://DIN-ADRESSE'::text as u)   -- ← RET KUN DENNE LINJE: din Netlify-adresse, uden / til sidst
+with base as (select 'https://superb-daffodil-ca45c8.netlify.app'::text as u)   -- din Netlify-adresse (uden / til sidst); ret kun, hvis du skifter domæne
 select base.u || '/dashboard.html?k=' || c.v as dashboard_link
 from base, public.config c
 where c.n = 'owner_token'
