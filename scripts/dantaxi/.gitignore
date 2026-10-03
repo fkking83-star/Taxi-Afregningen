@@ -2,3 +2,5 @@
 *.pdf
 spec*.txt
 *specifikation*.txt
+__pycache__/
+*.pyc

@@ -9,12 +9,12 @@ fs.writeFileSync(fil, [
 const kod = `import sys, json; sys.path.insert(0, ${JSON.stringify(mappe)}); import dantaxi_specifikation_parser as p
 v = p.vagter(${JSON.stringify(fil)}); s = p.sum_pr_vogn(v)
 print(json.dumps({'n': len(v), 'k': {'|'.join(k): d for k, d in v.items()}, 's': s}))`;
-const r = spawnSync('python3', ['-c', kod], { encoding: 'utf8' });
+const r = spawnSync('python3', ['-c', kod], { encoding: 'utf8', env: { ...process.env, PYTHONDONTWRITEBYTECODE: '1' } });
 check(r.status === 0, 'Parseren kan importeres og køres' + (r.status ? ': ' + r.stderr : ''));
 const j = r.status === 0 ? JSON.parse(r.stdout) : {};
 check(j.n === 3 && j.k['9001|1112'].gebyr === 15 && j.k['9001|1112'].beloeb === 1234.5 && j.k['9002|2001'].beloeb === -100 && j.k['9001|1111'].ture === 99, 'Linjer læses: punktum fjernes i vogn/vagt-nr, gebyr er valgfrit, negative beløb ok, samme (vogn, vagt) to gange: den sidste gælder');
 check(j.s && j.s['9001'].ture === 102 && Math.abs(j.s['9001'].beloeb - 1241.5) < 1e-9 && j.s['9002'].beloeb === -100, 'Sum pr. vogn');
-const u = spawnSync('python3', [py, fil], { encoding: 'utf8' });
+const u = spawnSync('python3', [py, fil], { encoding: 'utf8', env: { ...process.env, PYTHONDONTWRITEBYTECODE: '1' } });
 check(u.status === 0 && /3 vagter/.test(u.stdout) && /vogn 9001: 102 ture, 1,241\.50 kr/.test(u.stdout) && /i alt: 1,141\.50 kr/.test(u.stdout), 'Kommandolinjen skriver antal vagter, sum pr. vogn og i alt (og ændrer intet)');
 check(JSON.stringify(fs.readdirSync(tmp)) === '["spec.txt"]', 'Scriptet skriver ingen filer');
 // Ingen konkrete beløb/vognsummer og ingen faktura-id'er i docstringen
